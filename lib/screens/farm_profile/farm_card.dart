@@ -141,7 +141,11 @@ class _FarmCardState extends State<FarmCard>
                   offset: Offset(0, -2 * _bob.value),
                   child: child,
                 ),
-                child: Image.asset('assets/chicken.png', height: 26),
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: Image.asset('assets/chicken.png',
+                      height: 26, width: 26, fit: BoxFit.contain),
+                ),
               ),
               const SizedBox(width: 8),
               Text(
