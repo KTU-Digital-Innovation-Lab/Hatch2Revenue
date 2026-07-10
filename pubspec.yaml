@@ -55,6 +55,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
@@ -65,3 +66,22 @@ flutter:
     # Bundled fonts so the app renders correctly with no internet —
     # google_fonts loads these instead of fetching at runtime.
     - google_fonts/
+
+# Launcher icon (phone home screen, taskbar, etc.) generated from the
+# rooster logo. Run: dart run flutter_launcher_icons
+flutter_launcher_icons:
+  image_path: "assets/chicken_icon.png"
+  android: true
+  min_sdk_android: 21
+  adaptive_icon_background: "#F7FAF7"
+  adaptive_icon_foreground: "assets/chicken_icon.png"
+  ios: true
+  remove_alpha_ios: true
+  background_color_ios: "#F7FAF7"
+  web:
+    generate: true
+    background_color: "#F7FAF7"
+    theme_color: "#2E7D32"
+  windows:
+    generate: true
+    icon_size: 256
