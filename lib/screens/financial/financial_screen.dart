@@ -58,41 +58,23 @@ class FinancialScreen extends StatelessWidget {
                 action: Row(mainAxisSize: MainAxisSize.min, children: [
                   GhostBtn(
                     label: '📄 Export PDF',
-                    onPressed: () async {
-                      final fp    = context.read<FarmProfileProvider>();
-                      final batch = context.read<BatchProvider>();
-                      final eggs  = context.read<EggProductionProvider>();
-                      await PdfReportService.generateFarmReport(
-                        context: context,
-                        farmName: fp.profile.farmName,
-                        ownerName: fp.profile.ownerName,
-                        totalBirds: batch.totalBirds,
-                        totalBatches: batch.batches.length,
-                        totalEggs: eggs.totalEggs,
-                        totalRevenue: rev,
-                        totalExpenses: exp,
-                        netProfit: net,
-                        transactions: txns,
-                      );
-                    },
+                    onPressed: () => _showPdfOptions(context, rev, exp, net, txns),
                   ),
                   const SizedBox(width: 8),
                   PrimaryBtn(label: '+ Add Transaction', onPressed: () => _showAddDialog(context, finProvider)),
                 ]),
               ),
 
-              KpiCard(label: 'Total Revenue', value: '${CurrencyFormatter.currencySymbol}${rev.toStringAsFixed(0)}', icon: '📈', accentColor: AppColors.green),
-              const SizedBox(height: 12),
-              KpiCard(label: 'Total Expenses', value: '${CurrencyFormatter.currencySymbol}${exp.toStringAsFixed(0)}', icon: '📉', accentColor: AppColors.red),
-              const SizedBox(height: 12),
-              KpiCard(
-                label: 'Net Profit',
-                value: '${CurrencyFormatter.currencySymbol}${net.abs().toStringAsFixed(0)}',
-                icon: '💵',
-                accentColor: net >= 0 ? AppColors.green : AppColors.red,
-              ),
-              const SizedBox(height: 12),
-              KpiCard(label: 'Transactions', value: '${txns.length}', icon: '📋', accentColor: AppColors.cyan),
+              KpiGrid(children: [
+                KpiCard(label: 'Total Revenue', value: '${CurrencyFormatter.currencySymbol}${rev.toStringAsFixed(0)}', accentColor: AppColors.green),
+                KpiCard(label: 'Total Expenses', value: '${CurrencyFormatter.currencySymbol}${exp.toStringAsFixed(0)}', accentColor: AppColors.red),
+                KpiCard(
+                  label: 'Net Profit',
+                  value: '${CurrencyFormatter.currencySymbol}${net.abs().toStringAsFixed(0)}',
+                  accentColor: net >= 0 ? AppColors.green : AppColors.red,
+                ),
+                KpiCard(label: 'Transactions', value: '${txns.length}', accentColor: AppColors.cyan),
+              ]),
               const SizedBox(height: 18),
 
               _twoCol(
@@ -150,6 +132,56 @@ class FinancialScreen extends StatelessWidget {
     );
   }
 
+  void _showPdfOptions(BuildContext context, double rev, double exp, double net, List<FinancialTransaction> txns) {
+    Future<void> generate(bool share) {
+      final fp    = context.read<FarmProfileProvider>();
+      final batch = context.read<BatchProvider>();
+      final eggs  = context.read<EggProductionProvider>();
+      return PdfReportService.generateFarmReport(
+        context: context,
+        farmName: fp.profile.farmName,
+        ownerName: fp.profile.ownerName,
+        totalBirds: batch.totalBirds,
+        totalBatches: batch.batches.length,
+        totalEggs: eggs.totalEggs,
+        totalRevenue: rev,
+        totalExpenses: exp,
+        netProfit: net,
+        transactions: txns,
+        share: share,
+      );
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('📄 Farm Report'),
+        content: Text(
+          'How do you want the PDF report?',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton.icon(
+            icon: Icon(Icons.print_outlined, size: 18, color: AppColors.textSecondary),
+            label: Text('Print / Preview', style: TextStyle(color: AppColors.textSecondary)),
+            onPressed: () {
+              Navigator.pop(ctx);
+              generate(false);
+            },
+          ),
+          ElevatedButton.icon(
+            icon: const Icon(Icons.share_outlined, size: 16),
+            label: const Text('Share'),
+            onPressed: () {
+              Navigator.pop(ctx);
+              generate(true);
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _twoCol({required Widget left, required Widget right}) {
     return LayoutBuilder(builder: (ctx, c) {
       if (c.maxWidth < 500) return Column(children: [left, right]);
@@ -166,14 +198,14 @@ class FinancialScreen extends StatelessWidget {
       rows: sorted.map((t) {
         final isIncome = t.type == TransactionType.income;
         return [
-          Text(DateFormat('d MMM yyyy').format(t.date), style: GoogleFonts.dmMono(color: AppColors.textSecondary, fontSize: 11)),
+          Text(DateFormat('d MMM yyyy').format(t.date), style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
           TagChip(label: isIncome ? 'revenue' : 'expense', color: isIncome ? AppColors.green : AppColors.red),
-          Text(t.categoryName, style: GoogleFonts.dmMono(color: AppColors.textPrimary, fontSize: 11)),
+          Text(t.categoryName, style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11)),
           Text(
             '${isIncome ? '+' : '-'}${CurrencyFormatter.currencySymbol}${t.amount.toStringAsFixed(0)}',
-            style: GoogleFonts.dmMono(color: isIncome ? AppColors.green : AppColors.red, fontWeight: FontWeight.w500, fontSize: 12),
+            style: GoogleFonts.inter(color: isIncome ? AppColors.green : AppColors.red, fontWeight: FontWeight.w500, fontSize: 12),
           ),
-          Text(t.description ?? '—', style: GoogleFonts.dmMono(color: AppColors.textSecondary, fontSize: 11)),
+          Text(t.description ?? '—', style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
           Row(mainAxisSize: MainAxisSize.min, children: [
             EditBtn(onTap: () => _showEditDialog(context, t, provider)),
             DelBtn(onTap: () => _confirmDelete(context, t, provider)),
@@ -203,9 +235,9 @@ class FinancialScreen extends StatelessWidget {
                 child: DropdownButtonFormField<int>(
                   initialValue: selectedType,
                   dropdownColor: AppColors.surfaceLight,
-                  style: const TextStyle(color: AppColors.textPrimary),
+                  style: TextStyle(color: AppColors.textPrimary),
                   decoration: htmlInputDec(),
-                  items: const [
+                  items: [
                     DropdownMenuItem(value: 0, child: Text('Revenue', style: TextStyle(color: AppColors.textPrimary))),
                     DropdownMenuItem(value: 1, child: Text('Expense', style: TextStyle(color: AppColors.textPrimary))),
                   ],
@@ -218,11 +250,11 @@ class FinancialScreen extends StatelessWidget {
                 child: DropdownButtonFormField<int>(
                   initialValue: selectedCategory,
                   dropdownColor: AppColors.surfaceLight,
-                  style: const TextStyle(color: AppColors.textPrimary),
+                  style: TextStyle(color: AppColors.textPrimary),
                   decoration: htmlInputDec(),
                   items: TransactionCategory.values.map((c) => DropdownMenuItem(
                     value: c.index,
-                    child: Text(c.name[0].toUpperCase() + c.name.substring(1), style: const TextStyle(color: AppColors.textPrimary)),
+                    child: Text(c.name[0].toUpperCase() + c.name.substring(1), style: TextStyle(color: AppColors.textPrimary)),
                   )).toList(),
                   onChanged: (v) => ss(() => selectedCategory = v ?? 0),
                 ),
@@ -230,17 +262,17 @@ class FinancialScreen extends StatelessWidget {
               const SizedBox(height: 12),
               HtmlFormField(
                 label: 'Amount (${CurrencyFormatter.currencySymbol})',
-                child: TextField(controller: amountCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. 500')),
+                child: TextField(controller: amountCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. 500')),
               ),
               const SizedBox(height: 12),
               HtmlFormField(
                 label: 'Description',
-                child: TextField(controller: descCtrl, style: const TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Short description...')),
+                child: TextField(controller: descCtrl, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Short description...')),
               ),
             ]),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
             ElevatedButton(
               onPressed: () {
                 final amount = double.tryParse(amountCtrl.text.trim()) ?? 0;
@@ -287,9 +319,9 @@ class FinancialScreen extends StatelessWidget {
                 child: DropdownButtonFormField<int>(
                   initialValue: selectedType,
                   dropdownColor: AppColors.surfaceLight,
-                  style: const TextStyle(color: AppColors.textPrimary),
+                  style: TextStyle(color: AppColors.textPrimary),
                   decoration: htmlInputDec(),
-                  items: const [
+                  items: [
                     DropdownMenuItem(value: 0, child: Text('Revenue', style: TextStyle(color: AppColors.textPrimary))),
                     DropdownMenuItem(value: 1, child: Text('Expense', style: TextStyle(color: AppColors.textPrimary))),
                   ],
@@ -302,11 +334,11 @@ class FinancialScreen extends StatelessWidget {
                 child: DropdownButtonFormField<int>(
                   initialValue: selectedCategory,
                   dropdownColor: AppColors.surfaceLight,
-                  style: const TextStyle(color: AppColors.textPrimary),
+                  style: TextStyle(color: AppColors.textPrimary),
                   decoration: htmlInputDec(),
                   items: TransactionCategory.values.map((c) => DropdownMenuItem(
                     value: c.index,
-                    child: Text(c.name[0].toUpperCase() + c.name.substring(1), style: const TextStyle(color: AppColors.textPrimary)),
+                    child: Text(c.name[0].toUpperCase() + c.name.substring(1), style: TextStyle(color: AppColors.textPrimary)),
                   )).toList(),
                   onChanged: (v) => ss(() => selectedCategory = v ?? 0),
                 ),
@@ -314,17 +346,17 @@ class FinancialScreen extends StatelessWidget {
               const SizedBox(height: 12),
               HtmlFormField(
                 label: 'Amount',
-                child: TextField(controller: amountCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Amount')),
+                child: TextField(controller: amountCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Amount')),
               ),
               const SizedBox(height: 12),
               HtmlFormField(
                 label: 'Description',
-                child: TextField(controller: descCtrl, style: const TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Description')),
+                child: TextField(controller: descCtrl, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Description')),
               ),
             ]),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
             ElevatedButton(
               onPressed: () {
                 final amount = double.tryParse(amountCtrl.text.trim()) ?? 0;
@@ -355,9 +387,9 @@ class FinancialScreen extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Transaction?'),
-        content: const Text('This action cannot be undone.', style: TextStyle(color: AppColors.textSecondary)),
+        content: Text('This action cannot be undone.', style: TextStyle(color: AppColors.textSecondary)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.red, foregroundColor: Colors.white),
             onPressed: () { provider.removeTransaction(txn.id); Navigator.pop(ctx); },

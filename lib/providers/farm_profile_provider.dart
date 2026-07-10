@@ -11,16 +11,20 @@ class FarmProfileProvider extends ChangeNotifier {
   }
 
   Future<void> _load() async {
-    final prefs = await SharedPreferences.getInstance();
-    _profile = FarmProfile(
-      farmName: prefs.getString('fp_farmName') ?? '',
-      ownerName: prefs.getString('fp_ownerName') ?? '',
-      location: prefs.getString('fp_location') ?? '',
-      phone: prefs.getString('fp_phone') ?? '',
-      email: prefs.getString('fp_email') ?? '',
-      farmSize: prefs.getString('fp_farmSize') ?? '',
-    );
-    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _profile = FarmProfile(
+        farmName: prefs.getString('fp_farmName') ?? '',
+        ownerName: prefs.getString('fp_ownerName') ?? '',
+        location: prefs.getString('fp_location') ?? '',
+        phone: prefs.getString('fp_phone') ?? '',
+        email: prefs.getString('fp_email') ?? '',
+        farmSize: prefs.getString('fp_farmSize') ?? '',
+      );
+      notifyListeners();
+    } catch (e) {
+      debugPrint('FarmProfileProvider: prefs unavailable: $e');
+    }
   }
 
   Future<void> save(FarmProfile profile) async {

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:google_fonts/google_fonts.dart';
 import '../../providers/egg_production_provider.dart';
+import '../../providers/feed_provider.dart';
 import '../../providers/financial_provider.dart';
 import '../../providers/mortality_provider.dart';
 import '../../providers/batch_provider.dart';
@@ -23,10 +25,10 @@ class AnalyticsScreen extends StatelessWidget {
             children: [
               const Text('📊', style: TextStyle(fontSize: 32)),
               const SizedBox(width: 12),
-              const Column(
+              Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Analytics', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                  Text('Analytics', style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
                   Text('Visualize your farm performance', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                 ],
               ),
@@ -34,6 +36,10 @@ class AnalyticsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 24),
           _buildSummaryRow(context),
+          const SizedBox(height: 16),
+          _buildKpiGrid(context),
+          const SizedBox(height: 16),
+          _ChartCard(title: '7-Day Egg Forecast', emoji: '🔮', child: _ForecastCard()),
           const SizedBox(height: 16),
           _ChartCard(title: 'Egg Production (Last 10)', emoji: '🥚', child: _EggProductionChart()),
           const SizedBox(height: 16),
@@ -61,6 +67,97 @@ class AnalyticsScreen extends StatelessWidget {
       ],
     );
   }
+
+  /// Farm-performance KPIs: laying rate, mortality rate, FCR, cost per egg.
+  Widget _buildKpiGrid(BuildContext context) {
+    final batchProvider = context.watch<BatchProvider>();
+    final eggs = context.watch<EggProductionProvider>();
+    final feed = context.watch<FeedProvider>();
+    final mortality = context.watch<MortalityProvider>();
+
+    // Laying rate: eggs over the last 7 days vs. hen-days available.
+    final birds = batchProvider.totalBirds;
+    final eggs7 = eggs.eggsInLast(7);
+    final layingRate = birds > 0 ? (eggs7 / (birds * 7)) * 100 : 0.0;
+
+    // Cumulative mortality vs. birds ever housed.
+    final initialBirds = batchProvider.totalInitialBirds;
+    final mortalityRate =
+        initialBirds > 0 ? mortality.totalCount / initialBirds * 100 : 0.0;
+
+    // FCR: kg of feed per kg of egg mass (avg egg ≈ 60 g).
+    final eggMassKg = eggs.totalEggs * 0.06;
+    final fcr = eggMassKg > 0 ? feed.totalFeedKg / eggMassKg : 0.0;
+
+    // Feed cost per egg produced.
+    final costPerEgg =
+        eggs.totalEggs > 0 ? feed.totalFeedCost / eggs.totalEggs : 0.0;
+
+    return Column(children: [
+      Row(children: [
+        Expanded(child: _MiniStat(
+          label: 'LAYING RATE (7D)',
+          value: birds > 0 ? '${layingRate.toStringAsFixed(1)}%' : '—',
+          color: layingRate >= 70 ? AppColors.green : layingRate >= 50 ? AppColors.amber : AppColors.red,
+        )),
+        const SizedBox(width: 10),
+        Expanded(child: _MiniStat(
+          label: 'MORTALITY RATE',
+          value: initialBirds > 0 ? '${mortalityRate.toStringAsFixed(1)}%' : '—',
+          color: mortalityRate <= 5 ? AppColors.green : mortalityRate <= 10 ? AppColors.amber : AppColors.red,
+        )),
+      ]),
+      const SizedBox(height: 10),
+      Row(children: [
+        Expanded(child: _MiniStat(
+          label: 'FCR (FEED/EGG KG)',
+          value: fcr > 0 ? fcr.toStringAsFixed(2) : '—',
+          color: fcr > 0 && fcr < 2.3 ? AppColors.green : AppColors.amber,
+        )),
+        const SizedBox(width: 10),
+        Expanded(child: _MiniStat(
+          label: 'FEED COST / EGG',
+          value: costPerEgg > 0 ? '${CurrencyFormatter.currencySymbol}${costPerEgg.toStringAsFixed(2)}' : '—',
+          color: AppColors.purple,
+        )),
+      ]),
+    ]);
+  }
+}
+
+class _ForecastCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final eggs = context.watch<EggProductionProvider>();
+    if (eggs.records.isEmpty) {
+      return const _EmptyChart(message: 'Log egg production to see forecasts');
+    }
+    final next7 = eggs.forecastNext(7);
+    final last7 = eggs.eggsInLast(7);
+    final perDay = next7 / 7;
+    final trendUp = next7 >= last7;
+
+    return Row(children: [
+      Expanded(child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('PROJECTED NEXT 7 DAYS', style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 9, letterSpacing: 0.8)),
+          const SizedBox(height: 6),
+          Text('$next7 eggs', style: GoogleFonts.poppins(color: AppColors.amber, fontSize: 26, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 4),
+          Text('≈ ${perDay.toStringAsFixed(0)} eggs/day · linear trend on recent logs', style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 10)),
+        ],
+      )),
+      Column(children: [
+        Icon(trendUp ? Icons.trending_up : Icons.trending_down, color: trendUp ? AppColors.green : AppColors.red, size: 30),
+        const SizedBox(height: 4),
+        Text(
+          last7 > 0 ? '${(next7 / last7 * 100 - 100).toStringAsFixed(0)}% vs last 7d' : 'no baseline',
+          style: GoogleFonts.inter(color: trendUp ? AppColors.green : AppColors.red, fontSize: 10),
+        ),
+      ]),
+    ]);
+  }
 }
 
 class _MiniStat extends StatelessWidget {
@@ -81,9 +178,9 @@ class _MiniStat extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 9, letterSpacing: 0.8)),
+          Text(label, style: TextStyle(color: AppColors.textSecondary, fontSize: 9, letterSpacing: 0.8)),
           const SizedBox(height: 4),
-          Text(value, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+          Text(value, style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
         ],
       ),
     );
@@ -111,7 +208,7 @@ class _ChartCard extends StatelessWidget {
           Row(children: [
             Text(emoji, style: const TextStyle(fontSize: 16)),
             const SizedBox(width: 8),
-            Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+            Text(title, style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 14)),
           ]),
           const SizedBox(height: 16),
           child,
@@ -142,7 +239,7 @@ class _EggProductionChart extends StatelessWidget {
               getTooltipColor: (_) => AppColors.surfaceLight,
               getTooltipItem: (group, gi, rod, ri) => BarTooltipItem(
                 '${last10[group.x].eggCount} eggs',
-                const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11),
+                TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 11),
               ),
             ),
           ),
@@ -157,7 +254,7 @@ class _EggProductionChart extends StatelessWidget {
                   final d = last10[i].date;
                   return Padding(
                     padding: const EdgeInsets.only(top: 4),
-                    child: Text('${d.day}/${d.month}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 8)),
+                    child: Text('${d.day}/${d.month}', style: TextStyle(color: AppColors.textSecondary, fontSize: 8)),
                   );
                 },
               ),
@@ -169,7 +266,7 @@ class _EggProductionChart extends StatelessWidget {
           gridData: FlGridData(
             show: true,
             drawVerticalLine: false,
-            getDrawingHorizontalLine: (v) => const FlLine(color: AppColors.border, strokeWidth: 0.5),
+            getDrawingHorizontalLine: (v) => FlLine(color: AppColors.border, strokeWidth: 0.5),
           ),
           borderData: FlBorderData(show: false),
           barGroups: last10.asMap().entries.map((e) => BarChartGroupData(
@@ -218,10 +315,13 @@ class _FinancialPieChart extends StatelessWidget {
             const SizedBox(height: 10),
             _LegendItem(color: AppColors.red, label: 'Expenses', value: '${CurrencyFormatter.currencySymbol}${expenses.toStringAsFixed(0)}'),
             const SizedBox(height: 10),
+            // Not a pie slice — derived value. Amber (not expense-red)
+            // when negative so it can't be confused with Expenses.
             _LegendItem(
-              color: fin.netProfit >= 0 ? AppColors.cyan : AppColors.red,
-              label: 'Net Profit',
-              value: '${CurrencyFormatter.currencySymbol}${fin.netProfit.toStringAsFixed(0)}',
+              color: fin.netProfit >= 0 ? AppColors.cyan : AppColors.amber,
+              label: fin.netProfit >= 0 ? 'Net Profit' : 'Net Loss',
+              value:
+                  '${fin.netProfit < 0 ? '-' : ''}${CurrencyFormatter.currencySymbol}${fin.netProfit.abs().toStringAsFixed(0)}',
             ),
           ],
         )),
@@ -231,14 +331,14 @@ class _FinancialPieChart extends StatelessWidget {
 }
 
 class _MortalityPieChart extends StatelessWidget {
-  static const _colors = {
-    MortalityCause.disease: AppColors.red,
-    MortalityCause.predator: AppColors.purple,
-    MortalityCause.heatStress: AppColors.amber,
-    MortalityCause.cold: AppColors.cyan,
-    MortalityCause.suffocation: AppColors.blue,
-    MortalityCause.unknown: AppColors.textMuted,
-  };
+  Map<MortalityCause, Color> get _colors => {
+        MortalityCause.disease: AppColors.red,
+        MortalityCause.predator: AppColors.purple,
+        MortalityCause.heatStress: AppColors.amber,
+        MortalityCause.cold: AppColors.cyan,
+        MortalityCause.suffocation: AppColors.blue,
+        MortalityCause.unknown: AppColors.textMuted,
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -295,8 +395,8 @@ class _LegendItem extends StatelessWidget {
     return Row(children: [
       Container(width: 10, height: 10, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
       const SizedBox(width: 8),
-      Expanded(child: Text(label, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12))),
-      Text(value, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)),
+      Expanded(child: Text(label, style: TextStyle(color: AppColors.textSecondary, fontSize: 12))),
+      Text(value, style: TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
     ]);
   }
 }
@@ -314,9 +414,10 @@ class _EmptyChart extends StatelessWidget {
         children: [
           const Text('📈', style: TextStyle(fontSize: 28)),
           const SizedBox(height: 6),
-          Text(message, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+          Text(message, style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
         ],
       )),
     );
   }
 }
+    

@@ -34,6 +34,12 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
         final overdue = all.where((v) => v.isOverdue).toList();
         final pending = all.where((v) => v.status == VaccinationStatus.scheduled && !v.isOverdue).toList();
         final done    = all.where((v) => v.status == VaccinationStatus.completed).toList();
+        // Compliance = completed ÷ everything that was due by today
+        // (completed + overdue) — the core flock-health KPI.
+        final dueToDate = done.length + overdue.length;
+        final compliance = dueToDate > 0
+            ? '${(done.length / dueToDate * 100).round()}%'
+            : '—';
 
         List<Vaccination> shown;
         switch (_filter) {
@@ -54,24 +60,46 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
                 action: PrimaryBtn(label: '+ Schedule Vaccine', onPressed: () => _showAddDialog(context)),
               ),
 
-              KpiCard(label: 'Overdue', value: '${overdue.length}', icon: '⚠️', accentColor: AppColors.red),
-              const SizedBox(height: 12),
-              KpiCard(label: 'Upcoming', value: '${pending.length}', icon: '⏳', accentColor: AppColors.amber),
-              const SizedBox(height: 12),
-              KpiCard(label: 'Completed', value: '${done.length}', icon: '✅', accentColor: AppColors.green),
-              const SizedBox(height: 12),
-              KpiCard(label: 'Total Logged', value: '${all.length}', icon: '💉', accentColor: AppColors.cyan),
+              if (overdue.isNotEmpty)
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.red.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppColors.red.withValues(alpha: 0.4)),
+                  ),
+                  child: Row(children: [
+                    Icon(Icons.vaccines_outlined, color: AppColors.red, size: 18),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        '${overdue.length} overdue ${overdue.length == 1 ? "vaccination" : "vaccinations"}. '
+                        'Overdue vaccines raise disease risk — complete them or adjust the schedule.',
+                        style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 12),
+                      ),
+                    ),
+                  ]),
+                ),
+
+              KpiGrid(children: [
+                KpiCard(label: 'Overdue', value: '${overdue.length}', accentColor: AppColors.red),
+                KpiCard(label: 'Compliance', value: compliance, accentColor: AppColors.green),
+                KpiCard(label: 'Upcoming', value: '${pending.length}', accentColor: AppColors.amber),
+                KpiCard(label: 'Completed', value: '${done.length}', accentColor: AppColors.cyan),
+              ]),
               const SizedBox(height: 18),
 
               // Schedule card with filter buttons
               HtmlCard(
                 header: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.border))),
+                  decoration: BoxDecoration(border: Border(bottom: BorderSide(color: AppColors.border))),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('📅 Vaccination Schedule', style: GoogleFonts.syne(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w700)),
+                      Text('📅 Vaccination Schedule', style: GoogleFonts.poppins(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w700)),
                       const SizedBox(height: 8),
                       Row(children: [
                         _filterBtn('All', 'all'),
@@ -91,7 +119,7 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           child: Text(
                             'No records match this filter.',
-                            style: GoogleFonts.dmMono(color: AppColors.textSecondary, fontSize: 12),
+                            style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 12),
                           ),
                         ),
                       )
@@ -131,7 +159,7 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
         ),
         child: Text(
           label,
-          style: GoogleFonts.dmMono(
+          style: GoogleFonts.inter(
             color: active ? AppColors.textPrimary : AppColors.textSecondary,
             fontSize: 12,
             fontWeight: active ? FontWeight.w600 : FontWeight.normal,
@@ -168,11 +196,11 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(v.vaccineName, style: GoogleFonts.dmMono(color: AppColors.textPrimary, fontSize: 12), overflow: TextOverflow.ellipsis),
+                Text(v.vaccineName, style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 12), overflow: TextOverflow.ellipsis),
                 const SizedBox(height: 2),
                 Text(
                   'Due: ${DateFormat('d MMM yyyy').format(v.scheduledDate)} · ${v.unit ?? v.typeName}',
-                  style: GoogleFonts.dmMono(color: AppColors.textSecondary, fontSize: 10),
+                  style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 10),
                 ),
               ],
             ),
@@ -188,9 +216,9 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
                 NotificationService().cancelNotification(v.id.hashCode.abs());
               },
             ),
-            const SizedBox(width: 6),
-            EditBtn(onTap: () => _showEditDialog(context, v)),
           ],
+          const SizedBox(width: 6),
+          EditBtn(onTap: () => _showEditDialog(context, v)),
           const SizedBox(width: 4),
           DelBtn(onTap: () => _confirmDelete(context, v, provider)),
         ],
@@ -202,16 +230,16 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
     return HtmlTable(
       headers: ['Vaccine', 'Batch', 'Completed', 'Route'],
       rows: done.map((v) => [
-        Text(v.vaccineName, style: GoogleFonts.dmMono(color: AppColors.textPrimary, fontSize: 12)),
+        Text(v.vaccineName, style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 12)),
         Text(
           v.batchId.length > 8 ? v.batchId.substring(0, 8) : v.batchId,
-          style: GoogleFonts.dmMono(color: AppColors.textSecondary, fontSize: 11),
+          style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11),
         ),
         Text(
           v.administeredDate != null
               ? DateFormat('d MMM yyyy').format(v.administeredDate!)
               : DateFormat('d MMM yyyy').format(v.scheduledDate),
-          style: GoogleFonts.dmMono(color: AppColors.textPrimary, fontSize: 11),
+          style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11),
         ),
         TagChip(label: v.unit ?? v.typeName, color: AppColors.teal),
       ]).toList(),
@@ -236,12 +264,12 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               HtmlFormField(
                 label: 'Vaccine Name',
-                child: TextField(controller: nameCtrl, style: const TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. Newcastle Disease')),
+                child: TextField(controller: nameCtrl, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. Newcastle Disease')),
               ),
               const SizedBox(height: 12),
               HtmlFormField(
                 label: 'Batch / Flock',
-                child: TextField(controller: batchCtrl, style: const TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. B-2026-01 or All')),
+                child: TextField(controller: batchCtrl, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. B-2026-01 or All')),
               ),
               const SizedBox(height: 12),
               HtmlFormField(
@@ -260,9 +288,9 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
                 child: DropdownButtonFormField<String>(
                   initialValue: selectedRoute,
                   dropdownColor: AppColors.surfaceLight,
-                  style: const TextStyle(color: AppColors.textPrimary),
+                  style: TextStyle(color: AppColors.textPrimary),
                   decoration: htmlInputDec(),
-                  items: _routes.map((r) => DropdownMenuItem(value: r, child: Text(r, style: const TextStyle(color: AppColors.textPrimary)))).toList(),
+                  items: _routes.map((r) => DropdownMenuItem(value: r, child: Text(r, style: TextStyle(color: AppColors.textPrimary)))).toList(),
                   onChanged: (v) => ss(() => selectedRoute = v ?? selectedRoute),
                 ),
               ),
@@ -272,9 +300,9 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
                 child: DropdownButtonFormField<bool>(
                   initialValue: smsAlert,
                   dropdownColor: AppColors.surfaceLight,
-                  style: const TextStyle(color: AppColors.textPrimary),
+                  style: TextStyle(color: AppColors.textPrimary),
                   decoration: htmlInputDec(),
-                  items: const [
+                  items: [
                     DropdownMenuItem(value: true,  child: Text('Yes — send SMS', style: TextStyle(color: AppColors.textPrimary))),
                     DropdownMenuItem(value: false, child: Text('No — skip SMS',  style: TextStyle(color: AppColors.textPrimary))),
                   ],
@@ -287,9 +315,9 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
                 child: DropdownButtonFormField<VaccinationStatus>(
                   initialValue: selectedStatus,
                   dropdownColor: AppColors.surfaceLight,
-                  style: const TextStyle(color: AppColors.textPrimary),
+                  style: TextStyle(color: AppColors.textPrimary),
                   decoration: htmlInputDec(),
-                  items: const [
+                  items: [
                     DropdownMenuItem(value: VaccinationStatus.scheduled,  child: Text('Pending',   style: TextStyle(color: AppColors.textPrimary))),
                     DropdownMenuItem(value: VaccinationStatus.completed,  child: Text('Completed', style: TextStyle(color: AppColors.textPrimary))),
                   ],
@@ -299,12 +327,12 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
               const SizedBox(height: 12),
               HtmlFormField(
                 label: 'Notes',
-                child: TextField(controller: notesCtrl, maxLines: 3, style: const TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Dosage, brand, observations...')),
+                child: TextField(controller: notesCtrl, maxLines: 3, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Dosage, brand, observations...')),
               ),
             ]),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
             ElevatedButton(
               onPressed: () {
                 final name  = nameCtrl.text.trim();
@@ -348,39 +376,132 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
   }
 
   void _showEditDialog(BuildContext context, Vaccination vacc) {
+    final nameCtrl  = TextEditingController(text: vacc.vaccineName);
+    final notesCtrl = TextEditingController(text: vacc.notes ?? '');
+    final batches = context.read<BatchProvider>().batches;
+    // Keep the record's current batch selectable even if it was deleted/renamed.
+    final batchOptions = {...batches.map((b) => b.name), 'All', vacc.batchId}.toList();
+    String selectedBatch = vacc.batchId;
     DateTime selectedDate = vacc.scheduledDate;
+    String selectedRoute = _routes.contains(vacc.unit) ? vacc.unit! : _routes.first;
+    VaccinationStatus selectedStatus = vacc.status;
+
     showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, ss) => AlertDialog(
-          title: const Text('Reschedule Vaccine'),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            Text(vacc.vaccineName, style: const TextStyle(color: AppColors.amber, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-            HtmlFormField(
-              label: 'Due Date',
-              child: HtmlDateTile(
-                date: selectedDate,
-                onTap: () async {
-                  final d = await showDatePicker(context: ctx, initialDate: selectedDate, firstDate: DateTime.now(), lastDate: DateTime.now().add(const Duration(days: 365)));
-                  if (d != null) ss(() => selectedDate = d);
-                },
+          title: const Text('Edit Vaccine'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              HtmlFormField(
+                label: 'Vaccine Name',
+                child: TextField(controller: nameCtrl, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Vaccine name')),
               ),
-            ),
-          ]),
+              const SizedBox(height: 12),
+              HtmlFormField(
+                label: 'Batch / Flock',
+                child: DropdownButtonFormField<String>(
+                  initialValue: selectedBatch,
+                  dropdownColor: AppColors.surfaceLight,
+                  style: TextStyle(color: AppColors.textPrimary),
+                  decoration: htmlInputDec(),
+                  items: batchOptions.map((b) => DropdownMenuItem(
+                    value: b,
+                    child: Text(b, style: TextStyle(color: AppColors.textPrimary)),
+                  )).toList(),
+                  onChanged: (v) => ss(() => selectedBatch = v ?? selectedBatch),
+                ),
+              ),
+              const SizedBox(height: 12),
+              HtmlFormField(
+                label: 'Due Date',
+                child: HtmlDateTile(
+                  date: selectedDate,
+                  onTap: () async {
+                    final d = await showDatePicker(context: ctx, initialDate: selectedDate, firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 365)));
+                    if (d != null) ss(() => selectedDate = d);
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+              HtmlFormField(
+                label: 'Route of Admin',
+                child: DropdownButtonFormField<String>(
+                  initialValue: selectedRoute,
+                  dropdownColor: AppColors.surfaceLight,
+                  style: TextStyle(color: AppColors.textPrimary),
+                  decoration: htmlInputDec(),
+                  items: _routes.map((r) => DropdownMenuItem(value: r, child: Text(r, style: TextStyle(color: AppColors.textPrimary)))).toList(),
+                  onChanged: (v) => ss(() => selectedRoute = v ?? selectedRoute),
+                ),
+              ),
+              const SizedBox(height: 12),
+              HtmlFormField(
+                label: 'Status',
+                child: DropdownButtonFormField<VaccinationStatus>(
+                  initialValue: selectedStatus,
+                  dropdownColor: AppColors.surfaceLight,
+                  style: TextStyle(color: AppColors.textPrimary),
+                  decoration: htmlInputDec(),
+                  items: [
+                    DropdownMenuItem(value: VaccinationStatus.scheduled, child: Text('Pending',   style: TextStyle(color: AppColors.textPrimary))),
+                    DropdownMenuItem(value: VaccinationStatus.completed, child: Text('Completed', style: TextStyle(color: AppColors.textPrimary))),
+                    DropdownMenuItem(value: VaccinationStatus.missed,    child: Text('Missed',    style: TextStyle(color: AppColors.textPrimary))),
+                    DropdownMenuItem(value: VaccinationStatus.cancelled, child: Text('Cancelled', style: TextStyle(color: AppColors.textPrimary))),
+                  ],
+                  onChanged: (v) => ss(() => selectedStatus = v ?? selectedStatus),
+                ),
+              ),
+              const SizedBox(height: 12),
+              HtmlFormField(
+                label: 'Notes',
+                child: TextField(controller: notesCtrl, maxLines: 3, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Dosage, brand, observations...')),
+              ),
+            ]),
+          ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
             ElevatedButton(
               onPressed: () {
-                context.read<VaccinationProvider>().updateVaccination(vacc.copyWith(scheduledDate: selectedDate));
+                final name = nameCtrl.text.trim();
+                if (name.isEmpty) return;
+                final updated = vacc.copyWith(
+                  vaccineName: name,
+                  batchId: selectedBatch,
+                  scheduledDate: selectedDate,
+                  unit: selectedRoute,
+                  status: selectedStatus,
+                  administeredDate: selectedStatus == VaccinationStatus.completed &&
+                          vacc.administeredDate == null
+                      ? DateTime.now()
+                      : null, // null keeps the existing value
+                  notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
+                );
+                context.read<VaccinationProvider>().updateVaccination(updated);
+
+                // Refresh the reminder for the new date/status
+                NotificationService().cancelNotification(vacc.id.hashCode.abs());
+                if (updated.status == VaccinationStatus.scheduled &&
+                    updated.reminderEnabled) {
+                  final reminder = selectedDate.subtract(const Duration(days: 1));
+                  if (reminder.isAfter(DateTime.now())) {
+                    NotificationService().scheduleNotification(
+                      id: updated.id.hashCode.abs(),
+                      title: '💉 Vaccination Reminder',
+                      body: '${updated.vaccineName} is due tomorrow!',
+                      scheduledDate: reminder,
+                    );
+                  }
+                }
+
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content: Text('Vaccine rescheduled ✏️'),
+                  content: Text('Vaccine updated ✏️'),
                   backgroundColor: AppColors.cyan,
                   behavior: SnackBarBehavior.floating,
                 ));
               },
-              child: const Text('Save'),
+              child: const Text('Save Changes'),
             ),
           ],
         ),
@@ -393,9 +514,9 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Vaccination?'),
-        content: Text('Remove "${v.vaccineName}"?', style: const TextStyle(color: AppColors.textSecondary)),
+        content: Text('Remove "${v.vaccineName}"?', style: TextStyle(color: AppColors.textSecondary)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.red, foregroundColor: Colors.white),
             onPressed: () { provider.removeVaccination(v.id); Navigator.pop(ctx); },

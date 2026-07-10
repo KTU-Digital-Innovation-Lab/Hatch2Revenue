@@ -2,11 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import '../../models/batch.dart';
 import '../../models/egg_production.dart';
+import '../../models/financial_transaction.dart';
 import '../../providers/egg_production_provider.dart';
 import '../../providers/batch_provider.dart';
+import '../../providers/financial_provider.dart';
 import '../../providers/quick_action_provider.dart';
 import '../../utils/app_colors.dart';
+import '../../utils/currency_formatter.dart';
 import '../../utils/html_widgets.dart';
 
 class EggProductionScreen extends StatelessWidget {
@@ -26,7 +30,17 @@ class EggProductionScreen extends StatelessWidget {
         final logs     = eggProvider.records;
         final total    = eggProvider.totalEggs;
         final damaged  = eggProvider.totalDamagedEggs;
-        final latestHd = logs.isNotEmpty ? '${logs.last.productionRate.toStringAsFixed(1)}%' : '—%';
+        // Hen-Day % against birds currently in layer stage (all birds if none).
+        final layerBirds = () {
+          final layers = batchProvider.batches
+              .where((b) => b.type == BatchType.layers)
+              .fold(0, (s, b) => s + b.currentCount);
+          return layers > 0 ? layers : batchProvider.totalBirds;
+        }();
+        double hdPct(int eggs) => layerBirds > 0 ? eggs / layerBirds * 100 : 0;
+        final latestHd = logs.isNotEmpty && layerBirds > 0
+            ? '${hdPct(logs.last.eggCount).toStringAsFixed(1)}%'
+            : '—%';
         final avgPerDay = eggProvider.averagePerDay;
 
         return SingleChildScrollView(
@@ -40,13 +54,12 @@ class EggProductionScreen extends StatelessWidget {
                 action: PrimaryBtn(label: '+ Log Today\'s Eggs', onPressed: () => _showAddDialog(context)),
               ),
 
-              KpiCard(label: 'Total Eggs', value: '$total', icon: '🥚', accentColor: AppColors.green),
-              const SizedBox(height: 12),
-              KpiCard(label: 'Damaged', value: '$damaged', icon: '💔', accentColor: AppColors.red),
-              const SizedBox(height: 12),
-              KpiCard(label: 'HD% (latest)', value: latestHd, icon: '📈', accentColor: AppColors.amber),
-              const SizedBox(height: 12),
-              KpiCard(label: 'Days Logged', value: '${logs.length}', icon: '📅', accentColor: AppColors.cyan),
+              KpiGrid(children: [
+                KpiCard(label: 'Total Eggs', value: '$total', accentColor: AppColors.green),
+                KpiCard(label: 'Damaged', value: '$damaged', accentColor: AppColors.red),
+                KpiCard(label: 'HD% (latest)', value: latestHd, accentColor: AppColors.amber),
+                KpiCard(label: 'Days Logged', value: '${logs.length}', accentColor: AppColors.cyan),
+              ]),
               const SizedBox(height: 18),
 
               HtmlCard(
@@ -80,7 +93,7 @@ class EggProductionScreen extends StatelessWidget {
                         message: 'No egg records yet.',
                         action: PrimaryBtn(label: '+ Log Eggs', small: true, onPressed: () => _showAddDialog(context)),
                       )
-                    : _logsTable(context, logs, eggProvider),
+                    : _logsTable(context, logs, eggProvider, hdPct),
               ),
 
               const SizedBox(height: 60),
@@ -100,7 +113,7 @@ class EggProductionScreen extends StatelessWidget {
   Widget _legend(String icon, String label, Color color) => Row(mainAxisSize: MainAxisSize.min, children: [
     Text(icon, style: const TextStyle(fontSize: 10)),
     const SizedBox(width: 4),
-    Text(label, style: GoogleFonts.dmMono(color: color, fontSize: 9)),
+    Text(label, style: GoogleFonts.inter(color: color, fontSize: 9)),
   ]);
 
   Widget _buildCalendar(List<EggProduction> logs, double avgPerDay) {
@@ -152,22 +165,25 @@ class EggProductionScreen extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6), border: Border.all(color: border)),
       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Text(day, style: GoogleFonts.dmMono(color: fg, fontSize: 8)),
+        Text(day, style: GoogleFonts.inter(color: fg, fontSize: 8)),
         if (num.isNotEmpty)
-          Text(num, style: GoogleFonts.syne(color: fg, fontSize: 11, fontWeight: FontWeight.w800)),
+          Text(num, style: GoogleFonts.poppins(color: fg, fontSize: 11, fontWeight: FontWeight.w800)),
       ]),
     );
   }
 
-  Widget _logsTable(BuildContext context, List<EggProduction> logs, EggProductionProvider provider) {
+  Widget _logsTable(BuildContext context, List<EggProduction> logs, EggProductionProvider provider, double Function(int) hdPct) {
     final sorted = [...logs]..sort((a, b) => b.date.compareTo(a.date));
     return HtmlTable(
-      headers: ['Date', 'Total Eggs', 'Damaged', 'HD%', ''],
+      headers: ['Date', 'Batch', 'Time', 'Total', 'Good', 'Damaged', 'HD%', ''],
       rows: sorted.map((e) => [
-        Text(DateFormat('d MMM yyyy').format(e.date), style: GoogleFonts.dmMono(color: AppColors.textSecondary, fontSize: 11)),
-        Text('${e.eggCount}', style: GoogleFonts.dmMono(color: AppColors.green, fontWeight: FontWeight.w500, fontSize: 12)),
-        Text('${e.damagedCount}', style: GoogleFonts.dmMono(color: e.damagedCount > 0 ? AppColors.red : AppColors.textSecondary, fontSize: 11)),
-        Text('${e.productionRate.toStringAsFixed(1)}%', style: GoogleFonts.dmMono(color: AppColors.textPrimary, fontSize: 11)),
+        Text(DateFormat('d MMM yyyy').format(e.date), style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
+        Text(e.batchId, style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11)),
+        Text(e.period ?? '—', style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
+        Text('${e.eggCount}', style: GoogleFonts.inter(color: AppColors.green, fontWeight: FontWeight.w500, fontSize: 12)),
+        Text('${e.goodCount}', style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11)),
+        Text('${e.damagedCount}', style: GoogleFonts.inter(color: e.damagedCount > 0 ? AppColors.red : AppColors.textSecondary, fontSize: 11)),
+        Text('${hdPct(e.eggCount).toStringAsFixed(1)}%', style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11)),
         Row(mainAxisSize: MainAxisSize.min, children: [
           EditBtn(onTap: () => _showEditDialog(context, e, provider)),
           DelBtn(onTap: () => provider.removeRecord(e.id)),
@@ -179,56 +195,152 @@ class EggProductionScreen extends StatelessWidget {
   void _showAddDialog(BuildContext context) {
     final totalCtrl   = TextEditingController();
     final damagedCtrl = TextEditingController();
-    final hensCtrl    = TextEditingController();
+    final priceCtrl   = TextEditingController();
     final notesCtrl   = TextEditingController();
+
+    final batches = context.read<BatchProvider>().batches;
+    final batchOptions = ['All', ...batches.map((b) => b.name)];
+    String selectedBatch = batchOptions.first;
+    // Default the period from the time of day, the way field workers
+    // log collections (morning/afternoon/evening rounds).
+    const periods = ['Morning', 'Afternoon', 'Evening'];
+    String selectedPeriod = () {
+      final h = DateTime.now().hour;
+      if (h < 12) return 'Morning';
+      if (h < 16) return 'Afternoon';
+      return 'Evening';
+    }();
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, ss) {
+        // Live production rate against the selected flock's birds.
+        final bp = context.read<BatchProvider>();
+        final birds = selectedBatch == 'All'
+            ? bp.totalBirds
+            : (bp.getBatchByRef(selectedBatch)?.currentCount ?? 0);
+        final typedCount = int.tryParse(totalCtrl.text.trim()) ?? 0;
+        final prodRate = birds > 0 ? typedCount / birds * 100 : 0.0;
+        return AlertDialog(
         title: const Text('🥚 Log Egg Production'),
         content: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             HtmlFormField(label: 'Date', child: HtmlDateTile(date: DateTime.now())),
             const SizedBox(height: 12),
             HtmlFormField(
+              label: 'Batch / Flock',
+              child: DropdownButtonFormField<String>(
+                initialValue: selectedBatch,
+                dropdownColor: AppColors.surfaceLight,
+                style: TextStyle(color: AppColors.textPrimary),
+                decoration: htmlInputDec(),
+                items: batchOptions.map((b) => DropdownMenuItem(
+                  value: b,
+                  child: Text(b, style: TextStyle(color: AppColors.textPrimary)),
+                )).toList(),
+                onChanged: (v) => ss(() => selectedBatch = v ?? selectedBatch),
+              ),
+            ),
+            const SizedBox(height: 12),
+            HtmlFormField(
+              label: 'Collection Time',
+              child: Row(
+                children: periods.map((p) {
+                  final sel = p == selectedPeriod;
+                  return Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: GestureDetector(
+                        onTap: () => ss(() => selectedPeriod = p),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 9),
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: sel ? AppColors.amber.withValues(alpha: 0.15) : AppColors.surfaceLight,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: sel ? AppColors.amber : AppColors.border),
+                          ),
+                          child: Text(p, style: TextStyle(
+                            color: sel ? AppColors.amber : AppColors.textSecondary,
+                            fontSize: 12,
+                            fontWeight: sel ? FontWeight.w600 : FontWeight.normal,
+                          )),
+                        ),
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            HtmlFormField(
               label: 'Total Eggs Collected',
-              child: TextField(controller: totalCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. 3600')),
+              child: TextField(controller: totalCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. 3600'), onChanged: (_) => ss(() {})),
             ),
             const SizedBox(height: 12),
             HtmlFormField(
               label: 'Damaged / Cracked Eggs',
-              child: TextField(controller: damagedCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. 85')),
+              child: TextField(controller: damagedCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. 85')),
             ),
             const SizedBox(height: 12),
             HtmlFormField(
-              label: 'Laying Hens (for HD%)',
-              child: TextField(controller: hensCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. 4800')),
+              label: 'Price per Egg (${CurrencyFormatter.currencySymbol}) — optional',
+              child: TextField(controller: priceCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Sale value auto-logged as income')),
             ),
             const SizedBox(height: 12),
+            if (birds > 0 && typedCount > 0)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Production rate: ${prodRate.toStringAsFixed(0)}%  ·  $birds birds',
+                  style: TextStyle(color: AppColors.green, fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+              ),
+            const SizedBox(height: 8),
             HtmlFormField(
               label: 'Notes',
-              child: TextField(controller: notesCtrl, maxLines: 3, style: const TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Optional: weather, stress factors...')),
+              child: TextField(controller: notesCtrl, maxLines: 3, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Optional: weather, stress factors...')),
             ),
           ]),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
           ElevatedButton(
             onPressed: () {
               final count   = int.tryParse(totalCtrl.text.trim()) ?? 0;
               if (count <= 0) return;
               final damaged = int.tryParse(damagedCtrl.text.trim()) ?? 0;
+              final price   = double.tryParse(priceCtrl.text.trim()) ?? 0;
               context.read<EggProductionProvider>().addRecord(EggProduction(
-                batchId: 'all',
+                batchId: selectedBatch,
                 date: DateTime.now(),
                 eggCount: count,
                 damagedCount: damaged,
-                pricePerEgg: 1.0,
+                pricePerEgg: price,
+                period: selectedPeriod,
                 notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
               ));
+
+              // Auto-post the sale value to Financials
+              final saleValue = (count - damaged) * price;
+              if (saleValue > 0) {
+                context.read<FinancialProvider>().addTransaction(
+                  FinancialTransaction(
+                    date: DateTime.now(),
+                    type: TransactionType.income,
+                    category: TransactionCategory.eggSales,
+                    amount: saleValue,
+                    description: 'Egg sales: ${count - damaged} eggs @ ${CurrencyFormatter.currencySymbol}$price',
+                  ),
+                );
+              }
+
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: const Text('Egg log saved ✓'),
+                content: Text(saleValue > 0
+                    ? 'Egg log saved ✓ — income posted to Financials'
+                    : 'Egg log saved ✓'),
                 backgroundColor: AppColors.green.withValues(alpha: 0.9),
                 behavior: SnackBarBehavior.floating,
               ));
@@ -236,6 +348,8 @@ class EggProductionScreen extends StatelessWidget {
             child: const Text('Save'),
           ),
         ],
+      );
+      },
       ),
     );
   }
@@ -249,12 +363,12 @@ class EggProductionScreen extends StatelessWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Edit Egg Record'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          HtmlFormField(label: 'Number of Eggs', child: TextField(controller: countCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Total eggs'))),
+          HtmlFormField(label: 'Number of Eggs', child: TextField(controller: countCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Total eggs'))),
           const SizedBox(height: 12),
-          HtmlFormField(label: 'Damaged / Cracked', child: TextField(controller: damagedCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Damaged count'))),
+          HtmlFormField(label: 'Damaged / Cracked', child: TextField(controller: damagedCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Damaged count'))),
         ])),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
           ElevatedButton(
             onPressed: () {
               final count   = int.tryParse(countCtrl.text) ?? 0;

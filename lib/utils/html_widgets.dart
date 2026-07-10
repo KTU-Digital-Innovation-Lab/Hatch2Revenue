@@ -3,12 +3,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'app_colors.dart';
 
-// ─── KPI CARD ────────────────────────────────────────────────────────────────
+// ─── KPI CARD (with colored 2px top border like HTML .kpi) ──────────────────
 class KpiCard extends StatelessWidget {
   final String label;
   final String value;
   final String? sub;
-  final String? icon;
   final Color accentColor;
 
   const KpiCard({
@@ -17,83 +16,109 @@ class KpiCard extends StatelessWidget {
     required this.value,
     required this.accentColor,
     this.sub,
-    this.icon,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.88),
-        borderRadius: BorderRadius.circular(14),
-        border: Border(
-          top: BorderSide(color: accentColor, width: 3),
-          left: BorderSide(color: AppColors.border.withValues(alpha: 0.6)),
-          right: BorderSide(color: AppColors.border.withValues(alpha: 0.6)),
-          bottom: BorderSide(color: AppColors.border.withValues(alpha: 0.6)),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.18),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Stack(
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label.toUpperCase(),
-                style: GoogleFonts.poppins(
-                  color: AppColors.textSecondary,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 1.2,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                value,
-                style: GoogleFonts.poppins(
-                  color: AppColors.textPrimary,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  height: 1.1,
-                ),
-              ),
-              if (sub case final sub?) ...[
-                const SizedBox(height: 4),
+    // A single Border can't mix borderRadius with non-uniform side colors
+    // (Flutter throws "A borderRadius can only be given on borders with
+    // uniform colors" at paint time), so the colored top accent is layered
+    // on top of a plain rounded/uniform-border container instead. Both
+    // layers are Positioned.fill/Positioned so they share the same bounds —
+    // KpiCard is only ever used inside KpiGrid's tight GridView cells, so a
+    // non-positioned child here would shrink to its content instead of
+    // filling the cell, leaving the accent bar wider than the box below it.
+    return Stack(
+      children: [
+        Positioned.fill(
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
                 Text(
-                  sub,
-                  style: GoogleFonts.poppins(
+                  label.toUpperCase(),
+                  style: GoogleFonts.inter(
                     color: AppColors.textSecondary,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w400,
+                    fontSize: 10,
+                    letterSpacing: 1.5,
                   ),
                 ),
+                const SizedBox(height: 6),
+                Text(
+                  value,
+                  style: GoogleFonts.poppins(
+                    color: AppColors.textPrimary,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                    height: 1,
+                  ),
+                ),
+                if (sub case final sub?) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    sub,
+                    style: GoogleFonts.inter(
+                      color: AppColors.textSecondary,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
-          if (icon != null)
-            Positioned(
-              top: 0,
-              right: 0,
-              child: Opacity(
-                opacity: 0.18,
-                child: Text(icon!, style: const TextStyle(fontSize: 22)),
+        ),
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          child: Container(
+            height: 2,
+            decoration: BoxDecoration(
+              color: accentColor,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(14),
+                topRight: Radius.circular(14),
               ),
             ),
-        ],
-      ),
+          ),
+        ),
+      ],
     );
   }
 }
 
-// ─── SECTION HEADER ──────────────────────────────────────────────────────────
+// ─── KPI GRID (responsive grid layout for a row of KpiCards) ────────────────
+class KpiGrid extends StatelessWidget {
+  final List<Widget> children;
+
+  const KpiGrid({super.key, required this.children});
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (ctx, c) {
+        final cols = c.maxWidth < 400 ? 2 : 4;
+        return GridView.count(
+          crossAxisCount: cols,
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 2.2,
+          children: children,
+        );
+      },
+    );
+  }
+}
+
+// ─── SECTION HEADER (like HTML .section-header) ─────────────────────────────
 class SectionHeader extends StatelessWidget {
   final String title;
   final String? subtitle;
@@ -116,21 +141,19 @@ class SectionHeader extends StatelessWidget {
           Text(
             title,
             style: GoogleFonts.poppins(
-              color: Colors.white,
+              color: AppColors.textPrimary,
               fontSize: 20,
-              fontWeight: FontWeight.w700,
-              shadows: [Shadow(color: Colors.black38, blurRadius: 4)],
+              fontWeight: FontWeight.w800,
             ),
           ),
           if (subtitle != null)
             Padding(
-              padding: const EdgeInsets.only(top: 3),
+              padding: const EdgeInsets.only(top: 4),
               child: Text(
                 subtitle!,
-                style: GoogleFonts.poppins(
-                  color: Colors.white70,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w400,
+                style: GoogleFonts.inter(
+                  color: AppColors.textSecondary,
+                  fontSize: 11,
                 ),
               ),
             ),
@@ -145,7 +168,7 @@ class SectionHeader extends StatelessWidget {
   }
 }
 
-// ─── HTML CARD ────────────────────────────────────────────────────────────────
+// ─── CARD (like HTML .card with card-head / card-body) ───────────────────────
 class HtmlCard extends StatelessWidget {
   final Widget? header;
   final Widget body;
@@ -163,16 +186,9 @@ class HtmlCard extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.90),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border.withValues(alpha: 0.5)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.20),
-            blurRadius: 14,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border),
       ),
       clipBehavior: Clip.antiAlias,
       child: Column(
@@ -198,10 +214,9 @@ class HtmlCardHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.green.withValues(alpha: 0.08),
-        border: Border(bottom: BorderSide(color: AppColors.border.withValues(alpha: 0.5))),
+        border: Border(bottom: BorderSide(color: AppColors.border)),
       ),
       child: Row(
         children: [
@@ -211,7 +226,7 @@ class HtmlCardHeader extends StatelessWidget {
               style: GoogleFonts.poppins(
                 color: AppColors.textPrimary,
                 fontSize: 14,
-                fontWeight: FontWeight.w600,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),
@@ -222,7 +237,7 @@ class HtmlCardHeader extends StatelessWidget {
   }
 }
 
-// ─── TAG CHIP ─────────────────────────────────────────────────────────────────
+// ─── TAG CHIP (like HTML .tag) ───────────────────────────────────────────────
 class TagChip extends StatelessWidget {
   final String label;
   final Color color;
@@ -234,24 +249,23 @@ class TagChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: color.withValues(alpha: 0.25)),
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(4),
       ),
       child: Text(
         label.toUpperCase(),
-        style: GoogleFonts.poppins(
+        style: GoogleFonts.inter(
           color: color,
           fontSize: 10,
           fontWeight: FontWeight.w600,
-          letterSpacing: 0.8,
+          letterSpacing: 1.0,
         ),
       ),
     );
   }
 }
 
-// ─── CAUSE BAR ROW ───────────────────────────────────────────────────────────
+// ─── CAUSE BAR ROW (like HTML .cause-row) ────────────────────────────────────
 class CauseBarRow extends StatelessWidget {
   final String label;
   final int percent;
@@ -276,10 +290,9 @@ class CauseBarRow extends StatelessWidget {
             width: 110,
             child: Text(
               label,
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.inter(
                 color: AppColors.textPrimary,
                 fontSize: 12,
-                fontWeight: FontWeight.w500,
               ),
               overflow: TextOverflow.ellipsis,
             ),
@@ -287,10 +300,10 @@ class CauseBarRow extends StatelessWidget {
           const SizedBox(width: 8),
           Expanded(
             child: Container(
-              height: 7,
+              height: 6,
               decoration: BoxDecoration(
-                color: AppColors.border,
-                borderRadius: BorderRadius.circular(4),
+                color: AppColors.surfaceLight,
+                borderRadius: BorderRadius.circular(3),
               ),
               child: FractionallySizedBox(
                 alignment: Alignment.centerLeft,
@@ -298,7 +311,7 @@ class CauseBarRow extends StatelessWidget {
                 child: Container(
                   decoration: BoxDecoration(
                     color: color,
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: BorderRadius.circular(3),
                   ),
                 ),
               ),
@@ -310,10 +323,9 @@ class CauseBarRow extends StatelessWidget {
             child: Text(
               valueLabel,
               textAlign: TextAlign.right,
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.inter(
                 color: AppColors.textSecondary,
                 fontSize: 11,
-                fontWeight: FontWeight.w500,
               ),
             ),
           ),
@@ -323,7 +335,7 @@ class CauseBarRow extends StatelessWidget {
   }
 }
 
-// ─── EMPTY STATE ──────────────────────────────────────────────────────────────
+// ─── EMPTY STATE (like HTML .empty-state) ────────────────────────────────────
 class HtmlEmptyState extends StatelessWidget {
   final String icon;
   final String message;
@@ -340,34 +352,22 @@ class HtmlEmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 24),
+        padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 16),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              width: 72,
-              height: 72,
-              decoration: BoxDecoration(
-                color: AppColors.surfaceLight,
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.border, width: 1.5),
-              ),
-              child: Center(
-                child: Text(icon, style: const TextStyle(fontSize: 34)),
-              ),
-            ),
-            const SizedBox(height: 16),
+            Text(icon, style: const TextStyle(fontSize: 40)),
+            const SizedBox(height: 12),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.inter(
                 color: AppColors.textSecondary,
-                fontSize: 14,
-                fontWeight: FontWeight.w400,
+                fontSize: 13,
               ),
             ),
             if (action != null) ...[
-              const SizedBox(height: 18),
+              const SizedBox(height: 14),
               action!,
             ],
           ],
@@ -377,7 +377,7 @@ class HtmlEmptyState extends StatelessWidget {
   }
 }
 
-// ─── PRIMARY BUTTON (green, rounded pill) ────────────────────────────────────
+// ─── PRIMARY BUTTON (like HTML .btn.btn-primary) ─────────────────────────────
 class PrimaryBtn extends StatelessWidget {
   final String label;
   final VoidCallback onPressed;
@@ -395,27 +395,24 @@ class PrimaryBtn extends StatelessWidget {
     return ElevatedButton(
       onPressed: onPressed,
       style: ElevatedButton.styleFrom(
-        backgroundColor: AppColors.green,
-        foregroundColor: Colors.white,
+        backgroundColor: AppColors.amber,
+        foregroundColor: Colors.black,
         padding: small
-            ? const EdgeInsets.symmetric(horizontal: 14, vertical: 7)
-            : const EdgeInsets.symmetric(horizontal: 22, vertical: 10),
-        textStyle: GoogleFonts.poppins(
+            ? const EdgeInsets.symmetric(horizontal: 12, vertical: 6)
+            : const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+        textStyle: GoogleFonts.inter(
           fontSize: small ? 12 : 13,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w500,
         ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        elevation: 1,
-        shadowColor: AppColors.green.withValues(alpha: 0.3),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        elevation: 0,
       ),
       child: Text(label),
     );
   }
 }
 
-// ─── GHOST BUTTON ─────────────────────────────────────────────────────────────
+// ─── GHOST BUTTON (like HTML .btn.btn-ghost) ─────────────────────────────────
 class GhostBtn extends StatelessWidget {
   final String label;
   final VoidCallback onPressed;
@@ -433,23 +430,23 @@ class GhostBtn extends StatelessWidget {
     return OutlinedButton(
       onPressed: onPressed,
       style: OutlinedButton.styleFrom(
-        foregroundColor: AppColors.primary,
-        side: const BorderSide(color: AppColors.green, width: 1.5),
+        foregroundColor: AppColors.textPrimary,
+        side: BorderSide(color: AppColors.border),
         padding: small
-            ? const EdgeInsets.symmetric(horizontal: 12, vertical: 6)
-            : const EdgeInsets.symmetric(horizontal: 18, vertical: 9),
-        textStyle: GoogleFonts.poppins(
+            ? const EdgeInsets.symmetric(horizontal: 10, vertical: 5)
+            : const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        textStyle: GoogleFonts.inter(
           fontSize: small ? 12 : 13,
           fontWeight: FontWeight.w500,
         ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
       ),
       child: Text(label),
     );
   }
 }
 
-// ─── TABLE HELPERS ────────────────────────────────────────────────────────────
+// ─── TABLE HELPERS ───────────────────────────────────────────────────────────
 class HtmlTable extends StatelessWidget {
   final List<String> headers;
   final List<List<Widget>> rows;
@@ -461,15 +458,15 @@ class HtmlTable extends StatelessWidget {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: DataTable(
-        headingRowHeight: 40,
-        dataRowMinHeight: 46,
-        dataRowMaxHeight: 56,
-        columnSpacing: 20,
-        headingRowColor: const WidgetStatePropertyAll(AppColors.surfaceLight),
+        headingRowHeight: 36,
+        dataRowMinHeight: 44,
+        dataRowMaxHeight: 52,
+        columnSpacing: 16,
+        headingRowColor: const WidgetStatePropertyAll(Colors.transparent),
         dividerThickness: 0.5,
         border: TableBorder(
           horizontalInside: BorderSide(
-            color: AppColors.border.withValues(alpha: 0.8),
+            color: AppColors.border.withValues(alpha: 0.5),
             width: 0.5,
           ),
         ),
@@ -478,11 +475,10 @@ class HtmlTable extends StatelessWidget {
               (h) => DataColumn(
                 label: Text(
                   h.toUpperCase(),
-                  style: GoogleFonts.poppins(
+                  style: GoogleFonts.inter(
                     color: AppColors.textSecondary,
                     fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 1.0,
+                    letterSpacing: 1.5,
                   ),
                 ),
               ),
@@ -500,7 +496,7 @@ class HtmlTable extends StatelessWidget {
   }
 }
 
-// ─── STAGE PILL ───────────────────────────────────────────────────────────────
+// ─── STAGE PILL (like HTML .pill) ────────────────────────────────────────────
 class StagePill extends StatelessWidget {
   final String label;
   final Color color;
@@ -512,23 +508,22 @@ class StagePill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
+        color: color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
       child: Text(
         label,
-        style: GoogleFonts.poppins(
+        style: GoogleFonts.inter(
           color: color,
           fontSize: 11,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w500,
         ),
       ),
     );
   }
 }
 
-// ─── VACC STATUS BADGE ────────────────────────────────────────────────────────
+// ─── VACC STATUS BADGE ───────────────────────────────────────────────────────
 class VaccStatusBadge extends StatelessWidget {
   final String status; // 'done', 'pending', 'overdue'
 
@@ -550,23 +545,22 @@ class VaccStatusBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
       child: Text(
         status[0].toUpperCase() + status.substring(1),
-        style: GoogleFonts.poppins(
+        style: GoogleFonts.inter(
           color: color,
           fontSize: 12,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w500,
         ),
       ),
     );
   }
 }
 
-// ─── DELETE / EDIT ICON BUTTONS ───────────────────────────────────────────────
+// ─── DELETE ICON BUTTON ───────────────────────────────────────────────────────
 class DelBtn extends StatelessWidget {
   final VoidCallback onTap;
 
@@ -576,7 +570,7 @@ class DelBtn extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: const Padding(
+      child: Padding(
         padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         child: Icon(Icons.delete_outline, color: AppColors.textMuted, size: 18),
       ),
@@ -595,34 +589,36 @@ class EditBtn extends StatelessWidget {
       onTap: onTap,
       child: const Padding(
         padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-        child: Icon(Icons.edit_outlined, color: AppColors.green, size: 18),
+        child: Icon(Icons.edit_outlined, color: AppColors.cyan, size: 18),
       ),
     );
   }
 }
 
-// ─── SHARED DIALOG FORM HELPERS ───────────────────────────────────────────────
+// ─── SHARED DIALOG FORM HELPERS ──────────────────────────────────────────────
 
+/// Decoration for dialog text inputs — hint text, no floating label
 InputDecoration htmlInputDec([String hint = '']) => InputDecoration(
   hintText: hint.isEmpty ? null : hint,
-  hintStyle: const TextStyle(color: AppColors.textMuted, fontSize: 13),
+  hintStyle: TextStyle(color: AppColors.textMuted, fontSize: 13),
   filled: true,
   fillColor: AppColors.surfaceLight,
   contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
   border: OutlineInputBorder(
     borderRadius: BorderRadius.circular(8),
-    borderSide: const BorderSide(color: AppColors.border),
+    borderSide: BorderSide(color: AppColors.border),
   ),
   enabledBorder: OutlineInputBorder(
     borderRadius: BorderRadius.circular(8),
-    borderSide: const BorderSide(color: AppColors.border),
+    borderSide: BorderSide(color: AppColors.border),
   ),
   focusedBorder: OutlineInputBorder(
     borderRadius: BorderRadius.circular(8),
-    borderSide: const BorderSide(color: AppColors.green, width: 2),
+    borderSide: const BorderSide(color: AppColors.amber, width: 2),
   ),
 );
 
+/// Wraps a form field with an uppercase label above it (matches HTML <label> style)
 class HtmlFormField extends StatelessWidget {
   final String label;
   final Widget child;
@@ -636,11 +632,10 @@ class HtmlFormField extends StatelessWidget {
       children: [
         Text(
           label.toUpperCase(),
-          style: GoogleFonts.poppins(
+          style: GoogleFonts.inter(
             color: AppColors.textSecondary,
             fontSize: 10,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 1.2,
+            letterSpacing: 1.5,
           ),
         ),
         const SizedBox(height: 6),
@@ -650,6 +645,7 @@ class HtmlFormField extends StatelessWidget {
   }
 }
 
+/// Displays a formatted date in a styled box — tappable if onTap is provided
 class HtmlDateTile extends StatelessWidget {
   final DateTime date;
   final VoidCallback? onTap;
@@ -668,61 +664,18 @@ class HtmlDateTile extends StatelessWidget {
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
             color: onTap != null
-                ? AppColors.green.withValues(alpha: 0.5)
+                ? AppColors.amber.withValues(alpha: 0.5)
                 : AppColors.border,
           ),
         ),
         child: Text(
           DateFormat('d MMM yyyy').format(date),
           textAlign: TextAlign.center,
-          style: GoogleFonts.poppins(
+          style: GoogleFonts.inter(
             color: AppColors.textPrimary,
             fontSize: 13,
-            fontWeight: FontWeight.w500,
           ),
         ),
-      ),
-    );
-  }
-}
-
-// ─── CHECKLIST ITEM (checkmark bullet) ───────────────────────────────────────
-class ChecklistItem extends StatelessWidget {
-  final String text;
-  final Color? checkColor;
-
-  const ChecklistItem({super.key, required this.text, this.checkColor});
-
-  @override
-  Widget build(BuildContext context) {
-    final color = checkColor ?? AppColors.green;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            margin: const EdgeInsets.only(top: 2),
-            width: 18,
-            height: 18,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(Icons.check, size: 12, color: color),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: GoogleFonts.poppins(
-                color: AppColors.textPrimary,
-                fontSize: 13,
-                fontWeight: FontWeight.w400,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

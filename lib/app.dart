@@ -10,6 +10,8 @@ import 'providers/egg_production_provider.dart';
 import 'providers/financial_provider.dart';
 import 'providers/quick_action_provider.dart';
 import 'providers/farm_profile_provider.dart';
+import 'providers/theme_provider.dart';
+import 'services/sync_service.dart';
 import 'screens/home_screen.dart';
 import 'screens/lifecycle/lifecycle_screen.dart';
 import 'screens/vaccination/vaccination_screen.dart';
@@ -20,6 +22,7 @@ import 'screens/financial/financial_screen.dart';
 import 'screens/farm_profile/farm_profile_screen.dart';
 import 'screens/analytics/analytics_screen.dart';
 import 'utils/app_colors.dart';
+import 'utils/app_feedback.dart';
 
 class PoultryApp extends StatelessWidget {
   const PoultryApp({super.key});
@@ -28,77 +31,101 @@ class PoultryApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => BatchProvider()),
-        ChangeNotifierProvider(create: (_) => VaccinationProvider()),
-        ChangeNotifierProvider(create: (_) => FeedProvider()),
-        ChangeNotifierProvider(create: (_) => MortalityProvider()),
-        ChangeNotifierProvider(create: (_) => EggProductionProvider()),
-        ChangeNotifierProvider(create: (_) => FinancialProvider()),
+        ChangeNotifierProvider(create: (_) => BatchProvider()..init()),
+        ChangeNotifierProvider(create: (_) => VaccinationProvider()..init()),
+        ChangeNotifierProvider(create: (_) => FeedProvider()..init()),
+        ChangeNotifierProvider(create: (_) => MortalityProvider()..init()),
+        ChangeNotifierProvider(create: (_) => EggProductionProvider()..init()),
+        ChangeNotifierProvider(create: (_) => FinancialProvider()..init()),
         ChangeNotifierProvider(create: (_) => QuickActionProvider()),
         ChangeNotifierProvider(create: (_) => FarmProfileProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => SyncService()..start()),
       ],
-      child: MaterialApp(
-        title: 'Hatch2Revenue',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          brightness: Brightness.light,
-          scaffoldBackgroundColor: Colors.transparent,
-          textTheme: GoogleFonts.poppinsTextTheme(
-            ThemeData.light().textTheme.apply(
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, _) {
+          final dark = themeProvider.isDark;
+          return MaterialApp(
+            // Re-inflate the tree on theme change so every widget picks
+            // up the new AppColors palette.
+            key: ValueKey(dark),
+            title: 'Hatch2Revenue',
+            scaffoldMessengerKey: scaffoldMessengerKey,
+            debugShowCheckedModeBanner: false,
+            theme: _buildTheme(dark),
+            home: const MainNavigation(),
+          );
+        },
+      ),
+    );
+  }
+
+  ThemeData _buildTheme(bool dark) {
+    return ThemeData(
+          brightness: dark ? Brightness.dark : Brightness.light,
+          scaffoldBackgroundColor: AppColors.background,
+          textTheme: GoogleFonts.interTextTheme(
+            (dark ? ThemeData.dark() : ThemeData.light()).textTheme.apply(
               bodyColor: AppColors.textPrimary,
               displayColor: AppColors.textPrimary,
             ),
           ),
-          colorScheme: const ColorScheme.light(
-            primary: AppColors.green,
-            secondary: AppColors.amber,
-            surface: AppColors.surface,
-          ),
+          colorScheme: dark
+              ? ColorScheme.dark(
+                  primary: AppColors.amber,
+                  secondary: AppColors.green,
+                  surface: AppColors.surface,
+                )
+              : ColorScheme.light(
+                  primary: AppColors.amber,
+                  secondary: AppColors.green,
+                  surface: AppColors.surface,
+                ),
           appBarTheme: AppBarTheme(
-            backgroundColor: AppColors.primary,
+            backgroundColor: AppColors.background,
             elevation: 0,
             titleTextStyle: GoogleFonts.poppins(
-              color: Colors.white,
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
             ),
-            iconTheme: const IconThemeData(color: Colors.white),
+            iconTheme: IconThemeData(color: AppColors.textPrimary),
           ),
-          drawerTheme: const DrawerThemeData(
+          drawerTheme: DrawerThemeData(
             backgroundColor: AppColors.surface,
           ),
           cardTheme: CardThemeData(
             color: AppColors.surface,
             elevation: 0,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-              side: const BorderSide(color: AppColors.border),
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(color: AppColors.border),
             ),
           ),
           inputDecorationTheme: InputDecorationTheme(
             filled: true,
             fillColor: AppColors.surfaceLight,
-            labelStyle: const TextStyle(color: AppColors.textSecondary),
+            labelStyle: TextStyle(color: AppColors.textSecondary),
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: AppColors.border),
+              borderSide: BorderSide(color: AppColors.border),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: AppColors.border),
+              borderSide: BorderSide(color: AppColors.border),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: AppColors.green, width: 2),
+              borderSide: const BorderSide(color: AppColors.amber, width: 2),
             ),
           ),
           elevatedButtonTheme: ElevatedButtonThemeData(
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.green,
+              backgroundColor: AppColors.amber,
               foregroundColor: Colors.white,
-              textStyle: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+              textStyle: GoogleFonts.poppins(fontWeight: FontWeight.w700),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(8),
               ),
             ),
           ),
@@ -106,36 +133,31 @@ class PoultryApp extends StatelessWidget {
             backgroundColor: AppColors.surface,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
-              side: const BorderSide(color: AppColors.border),
+              side: BorderSide(color: AppColors.border),
             ),
             titleTextStyle: GoogleFonts.poppins(
               color: AppColors.textPrimary,
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
+              fontSize: 17,
+              fontWeight: FontWeight.w800,
             ),
             contentTextStyle: TextStyle(
               color: AppColors.textSecondary,
               fontSize: 14,
-              fontFamily: GoogleFonts.poppins().fontFamily,
+              fontFamily: GoogleFonts.inter().fontFamily,
             ),
           ),
-          snackBarTheme: SnackBarThemeData(
+          snackBarTheme: const SnackBarThemeData(
             behavior: SnackBarBehavior.floating,
-            backgroundColor: AppColors.primary,
-            contentTextStyle: GoogleFonts.poppins(color: Colors.white),
-            shape: const RoundedRectangleBorder(
+            shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.all(Radius.circular(10)),
             ),
           ),
-          dropdownMenuTheme: const DropdownMenuThemeData(
+          dropdownMenuTheme: DropdownMenuThemeData(
             menuStyle: MenuStyle(
               backgroundColor: WidgetStatePropertyAll(AppColors.surfaceLight),
             ),
           ),
           useMaterial3: true,
-        ),
-        home: const MainNavigation(),
-      ),
     );
   }
 }
@@ -152,8 +174,32 @@ class MainNavigation extends StatefulWidget {
 }
 
 class _MainNavigationState extends State<MainNavigation> {
-  int _currentIndex = 0;
+  // Survives the re-inflation that happens on theme toggle so the user
+  // stays on the same screen.
+  static int _lastIndex = 0;
+  int _currentIndex = _lastIndex;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  @override
+  void initState() {
+    super.initState();
+    // When a background sync pulls remote changes, refresh every
+    // provider from the local database so the UI shows them.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      context.read<SyncService>().onDataChanged = () async {
+        if (!mounted) return;
+        await Future.wait([
+          context.read<BatchProvider>().reload(),
+          context.read<VaccinationProvider>().reload(),
+          context.read<FeedProvider>().reload(),
+          context.read<EggProductionProvider>().reload(),
+          context.read<MortalityProvider>().reload(),
+          context.read<FinancialProvider>().reload(),
+        ]);
+      };
+    });
+  }
 
   final List<Widget> _screens = const [
     HomeScreen(),
@@ -179,16 +225,16 @@ class _MainNavigationState extends State<MainNavigation> {
     'Analytics',
   ];
 
-  final List<String> _emojis = const [
-    '🏠',
-    '🐣',
-    '💉',
-    '🌾',
-    '🥚',
-    '⚠️',
-    '💰',
-    '🏡',
-    '📊',
+  final List<IconData> _icons = const [
+    Icons.space_dashboard_outlined,
+    Icons.timeline,
+    Icons.vaccines_outlined,
+    Icons.grass,
+    Icons.egg_outlined,
+    Icons.monitor_heart_outlined,
+    Icons.payments_outlined,
+    Icons.agriculture_outlined,
+    Icons.insights,
   ];
 
   // Nav section structure: null = section header label, int = screen index
@@ -214,81 +260,69 @@ class _MainNavigationState extends State<MainNavigation> {
     }
     setState(() {
       _currentIndex = index;
+      _lastIndex = index;
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        // Full-screen farm background image
-        Positioned.fill(
-          child: Image.asset(
-            'assets/farm_bg.jpg',
-            fit: BoxFit.cover,
+    return Scaffold(
+      key: _scaffoldKey,
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: AppColors.background,
+        elevation: 0,
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(1),
+          child: Container(height: 1, color: AppColors.border),
+        ),
+        leading: Builder(
+          builder: (ctx) => IconButton(
+            icon: Icon(Icons.menu, color: AppColors.textPrimary),
+            onPressed: () => Scaffold.of(ctx).openDrawer(),
           ),
         ),
-        // Gradient overlay — darker at edges, lighter in center to keep image visible
-        Positioned.fill(
-          child: Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Color(0xD9142A14), // deep forest green 85%
-                  Color(0xBB1B2B1C), // dark green 73%
-                ],
-              ),
-            ),
+        title: Text(
+          _titles[_currentIndex],
+          style: GoogleFonts.poppins(
+            color: AppColors.textPrimary,
+            fontSize: 17,
+            fontWeight: FontWeight.w800,
           ),
         ),
-        Scaffold(
-          key: _scaffoldKey,
-          backgroundColor: Colors.transparent,
-          appBar: AppBar(
-            backgroundColor: const Color(0xEE2E7D32), // dark green 93%
-            elevation: 0,
-            bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(1),
-              child: Container(height: 1, color: Colors.white24),
-            ),
-            leading: Builder(
-              builder: (ctx) => IconButton(
-                icon: const Icon(Icons.menu, color: Colors.white),
-                onPressed: () => Scaffold.of(ctx).openDrawer(),
+        actions: [
+          Consumer<ThemeProvider>(
+            builder: (context, themeProvider, _) => IconButton(
+              tooltip: themeProvider.isDark ? 'Day mode' : 'Night mode',
+              icon: Icon(
+                themeProvider.isDark
+                    ? Icons.light_mode_outlined
+                    : Icons.dark_mode_outlined,
+                color: AppColors.textSecondary,
+                size: 20,
               ),
+              onPressed: themeProvider.toggle,
             ),
-            title: Text(
-              _titles[_currentIndex],
-              style: GoogleFonts.poppins(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            actions: [
-              Padding(
-                padding: const EdgeInsets.only(right: 16),
-                child: Center(
-                  child: Text(
-                    DateFormat('EEE, d MMM yyyy').format(DateTime.now()),
-                    style: GoogleFonts.poppins(
-                      color: Colors.white70,
-                      fontSize: 11,
-                    ),
-                  ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 16),
+            child: Center(
+              child: Text(
+                DateFormat('EEE, d MMM yyyy').format(DateTime.now()),
+                style: GoogleFonts.inter(
+                  color: AppColors.textSecondary,
+                  fontSize: 12,
                 ),
               ),
-            ],
+            ),
           ),
-          drawer: _buildDrawer(context),
-          body: IndexedStack(
-            index: _currentIndex,
-            children: _screens,
-          ),
-        ),
-      ],
+        ],
+      ),
+      drawer: _buildDrawer(context),
+      body: IndexedStack(
+        index: _currentIndex,
+        children: _screens,
+      ),
     );
   }
 
@@ -298,7 +332,7 @@ class _MainNavigationState extends State<MainNavigation> {
       width: 270,
       child: Column(
         children: [
-          // Logo header — amber background matching AppBar
+          // Logo header
           Consumer<FarmProfileProvider>(
             builder: (context, farmProvider, _) {
               final profile = farmProvider.profile;
@@ -310,8 +344,10 @@ class _MainNavigationState extends State<MainNavigation> {
                   left: 20,
                   right: 20,
                 ),
-                decoration: const BoxDecoration(
-                  color: AppColors.primary,
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(color: AppColors.border),
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -319,14 +355,17 @@ class _MainNavigationState extends State<MainNavigation> {
                     Row(
                       children: [
                         Container(
-                          width: 40,
-                          height: 40,
+                          width: 36,
+                          height: 36,
                           decoration: BoxDecoration(
-                            color: Colors.white24,
-                            borderRadius: BorderRadius.circular(10),
+                            color: AppColors.amber.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: AppColors.amber.withValues(alpha: 0.3),
+                            ),
                           ),
                           child: const Center(
-                            child: Text('🐓', style: TextStyle(fontSize: 20)),
+                            child: Text('🐓', style: TextStyle(fontSize: 18)),
                           ),
                         ),
                         const SizedBox(width: 10),
@@ -336,15 +375,15 @@ class _MainNavigationState extends State<MainNavigation> {
                             Text(
                               'Hatch2Revenue',
                               style: GoogleFonts.poppins(
-                                color: Colors.white,
+                                color: AppColors.amber,
                                 fontSize: 15,
-                                fontWeight: FontWeight.w700,
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
                             Text(
                               'FARM MANAGER',
-                              style: GoogleFonts.poppins(
-                                color: Colors.white70,
+                              style: GoogleFonts.inter(
+                                color: AppColors.textSecondary,
                                 fontSize: 10,
                                 letterSpacing: 1.5,
                               ),
@@ -361,24 +400,24 @@ class _MainNavigationState extends State<MainNavigation> {
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white24,
+                          color: AppColors.surfaceLight,
                           borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppColors.border),
                         ),
                         child: Row(
                           children: [
                             const Icon(
                               Icons.agriculture_outlined,
-                              color: Colors.white,
+                              color: AppColors.amber,
                               size: 14,
                             ),
                             const SizedBox(width: 6),
                             Expanded(
                               child: Text(
                                 profile.farmName,
-                                style: GoogleFonts.poppins(
-                                  color: Colors.white,
+                                style: GoogleFonts.inter(
+                                  color: AppColors.textPrimary,
                                   fontSize: 12,
-                                  fontWeight: FontWeight.w500,
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -411,9 +450,9 @@ class _MainNavigationState extends State<MainNavigation> {
                         ),
                         child: Text(
                           item.sectionLabel!,
-                          style: GoogleFonts.poppins(
+                          style: GoogleFonts.inter(
                             color: AppColors.textMuted,
-                            fontSize: 10,
+                            fontSize: 11,
                             fontWeight: FontWeight.w600,
                             letterSpacing: 1.5,
                           ),
@@ -424,7 +463,7 @@ class _MainNavigationState extends State<MainNavigation> {
                     final isSelected = _currentIndex == idx;
                     final showBadge = idx == 2 && overdueCount > 0;
                     return _DrawerNavTile(
-                      emoji: _emojis[idx],
+                      icon: _icons[idx],
                       title: _titles[idx],
                       isSelected: isSelected,
                       badge: showBadge ? overdueCount : null,
@@ -438,14 +477,14 @@ class _MainNavigationState extends State<MainNavigation> {
           // Footer
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               border: Border(top: BorderSide(color: AppColors.border)),
             ),
             child: Text(
               'Hatch2Revenue v1.0.0',
-              style: GoogleFonts.poppins(
+              style: GoogleFonts.inter(
                 color: AppColors.textMuted,
-                fontSize: 11,
+                fontSize: 12,
               ),
             ),
           ),
@@ -462,14 +501,14 @@ class _NavItem {
 }
 
 class _DrawerNavTile extends StatelessWidget {
-  final String emoji;
+  final IconData icon;
   final String title;
   final bool isSelected;
   final int? badge;
   final VoidCallback onTap;
 
   const _DrawerNavTile({
-    required this.emoji,
+    required this.icon,
     required this.title,
     required this.isSelected,
     required this.onTap,
@@ -482,35 +521,37 @@ class _DrawerNavTile extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
       decoration: BoxDecoration(
         color: isSelected
-            ? AppColors.green.withValues(alpha: 0.10)
+            ? const Color(0x12F5A623) // amber ~7% opacity
             : Colors.transparent,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
         border: Border(
           left: BorderSide(
-            color: isSelected ? AppColors.green : Colors.transparent,
+            color: isSelected ? AppColors.amber : Colors.transparent,
             width: 3,
           ),
         ),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
           child: Row(
             children: [
-              Text(emoji, style: const TextStyle(fontSize: 17)),
+              Icon(
+                icon,
+                size: 18,
+                color: isSelected ? AppColors.amber : AppColors.textSecondary,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   title,
-                  style: GoogleFonts.poppins(
-                    color: isSelected
-                        ? AppColors.primary
-                        : AppColors.textPrimary,
-                    fontSize: 13,
+                  style: GoogleFonts.inter(
+                    color: isSelected ? AppColors.amber : AppColors.textPrimary,
+                    fontSize: 14,
                     fontWeight:
-                        isSelected ? FontWeight.w600 : FontWeight.w400,
+                        isSelected ? FontWeight.w600 : FontWeight.normal,
                   ),
                 ),
               ),
@@ -526,7 +567,7 @@ class _DrawerNavTile extends StatelessWidget {
                   ),
                   child: Text(
                     '$badge',
-                    style: GoogleFonts.poppins(
+                    style: GoogleFonts.inter(
                       color: Colors.white,
                       fontSize: 10,
                       fontWeight: FontWeight.w600,

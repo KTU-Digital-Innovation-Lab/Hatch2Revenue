@@ -50,13 +50,14 @@ class MortalityScreen extends StatelessWidget {
                 action: PrimaryBtn(label: '+ Log Deaths', onPressed: () => _showAddDialog(context)),
               ),
 
-              KpiCard(label: 'Survival Rate', value: survival, icon: '❤️', accentColor: AppColors.green),
-              const SizedBox(height: 12),
-              KpiCard(label: 'Total Deaths', value: '$totalDeaths', icon: '📉', accentColor: AppColors.red),
-              const SizedBox(height: 12),
-              KpiCard(label: 'This Week', value: '$weekDeaths', icon: '📅', accentColor: AppColors.amber),
-              const SizedBox(height: 12),
-              KpiCard(label: 'Causes Tagged', value: '$causes', icon: '🔬', accentColor: AppColors.cyan),
+              ..._buildAlert(totalBirds, weekDeaths),
+
+              KpiGrid(children: [
+                KpiCard(label: 'Survival Rate', value: survival, accentColor: AppColors.green),
+                KpiCard(label: 'Total Deaths', value: '$totalDeaths', accentColor: AppColors.red),
+                KpiCard(label: 'This Week', value: '$weekDeaths', accentColor: AppColors.amber),
+                KpiCard(label: 'Causes Tagged', value: '$causes', accentColor: AppColors.cyan),
+              ]),
               const SizedBox(height: 18),
 
               _twoCol(
@@ -99,6 +100,50 @@ class MortalityScreen extends StatelessWidget {
     );
   }
 
+  /// Weekly-loss threshold alert, like FarmNest's mortality warnings.
+  /// >2% of the flock in a week is a red flag; >1% is worth watching.
+  List<Widget> _buildAlert(int totalBirds, int weekDeaths) {
+    if (totalBirds <= 0 || weekDeaths <= 0) return const [];
+    final pct = weekDeaths / (totalBirds + weekDeaths) * 100;
+    final (color, icon, msg) = pct > 2
+        ? (
+            AppColors.red,
+            Icons.error_outline,
+            'High mortality: $weekDeaths losses this week (${pct.toStringAsFixed(1)}% of the flock). '
+                'Check water, ventilation, disease signs — consider a vet.'
+          )
+        : pct > 1
+            ? (
+                AppColors.amber,
+                Icons.warning_amber_rounded,
+                'Watch closely: $weekDeaths losses this week (${pct.toStringAsFixed(1)}% of the flock). '
+                    'Review the cause breakdown below.'
+              )
+            : (Colors.transparent, Icons.check, '');
+    if (msg.isEmpty) return const [];
+    return [
+      Container(
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: color.withValues(alpha: 0.4)),
+        ),
+        child: Row(children: [
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(msg,
+                style: GoogleFonts.inter(
+                    color: AppColors.textPrimary, fontSize: 12)),
+          ),
+        ]),
+      ),
+    ];
+  }
+
   Widget _twoCol({required Widget left, required Widget right}) {
     return LayoutBuilder(builder: (ctx, c) {
       if (c.maxWidth < 500) return Column(children: [left, right]);
@@ -113,10 +158,10 @@ class MortalityScreen extends StatelessWidget {
     return HtmlTable(
       headers: ['Date', 'Deaths', 'Cause', 'Batch', ''],
       rows: sorted.map((r) => [
-        Text(DateFormat('d MMM yyyy').format(r.date), style: GoogleFonts.dmMono(color: AppColors.textSecondary, fontSize: 11)),
-        Text('${r.count}', style: GoogleFonts.dmMono(color: AppColors.red, fontWeight: FontWeight.w500, fontSize: 12)),
-        Text(r.causeName, style: GoogleFonts.dmMono(color: AppColors.textPrimary, fontSize: 11)),
-        Text(r.batchId.length > 8 ? r.batchId.substring(0, 8) : r.batchId, style: GoogleFonts.dmMono(color: AppColors.textSecondary, fontSize: 11)),
+        Text(DateFormat('d MMM yyyy').format(r.date), style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
+        Text('${r.count}', style: GoogleFonts.inter(color: AppColors.red, fontWeight: FontWeight.w500, fontSize: 12)),
+        Text(r.causeName, style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11)),
+        Text(r.batchId.length > 8 ? r.batchId.substring(0, 8) : r.batchId, style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
         Row(mainAxisSize: MainAxisSize.min, children: [
           EditBtn(onTap: () => _showEditDialog(context, r, provider)),
           DelBtn(onTap: () => _confirmDelete(context, r, provider)),
@@ -127,9 +172,11 @@ class MortalityScreen extends StatelessWidget {
 
   void _showAddDialog(BuildContext context) {
     final countCtrl = TextEditingController();
-    final batchCtrl = TextEditingController();
     final notesCtrl = TextEditingController();
     int selectedCause = 0;
+    final batches = context.read<BatchProvider>().batches;
+    final batchOptions = [...batches.map((b) => b.name), 'All'];
+    String selectedBatch = batchOptions.first;
 
     showDialog(
       context: context,
@@ -142,7 +189,7 @@ class MortalityScreen extends StatelessWidget {
               const SizedBox(height: 12),
               HtmlFormField(
                 label: 'Number of Deaths',
-                child: TextField(controller: countCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. 7')),
+                child: TextField(controller: countCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. 7')),
               ),
               const SizedBox(height: 12),
               HtmlFormField(
@@ -150,11 +197,11 @@ class MortalityScreen extends StatelessWidget {
                 child: DropdownButtonFormField<int>(
                   initialValue: selectedCause,
                   dropdownColor: AppColors.surfaceLight,
-                  style: const TextStyle(color: AppColors.textPrimary),
+                  style: TextStyle(color: AppColors.textPrimary),
                   decoration: htmlInputDec(),
                   items: MortalityCause.values.map((c) => DropdownMenuItem(
                     value: c.index,
-                    child: Text(c.name[0].toUpperCase() + c.name.substring(1), style: const TextStyle(color: AppColors.textPrimary)),
+                    child: Text(c.name[0].toUpperCase() + c.name.substring(1), style: TextStyle(color: AppColors.textPrimary)),
                   )).toList(),
                   onChanged: (v) => ss(() => selectedCause = v ?? 0),
                 ),
@@ -162,32 +209,43 @@ class MortalityScreen extends StatelessWidget {
               const SizedBox(height: 12),
               HtmlFormField(
                 label: 'Affected Batch',
-                child: TextField(controller: batchCtrl, style: const TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. B-2026-01 or All')),
+                child: DropdownButtonFormField<String>(
+                  initialValue: selectedBatch,
+                  dropdownColor: AppColors.surfaceLight,
+                  style: TextStyle(color: AppColors.textPrimary),
+                  decoration: htmlInputDec(),
+                  items: batchOptions.map((b) => DropdownMenuItem(
+                    value: b,
+                    child: Text(b, style: TextStyle(color: AppColors.textPrimary)),
+                  )).toList(),
+                  onChanged: (v) => ss(() => selectedBatch = v ?? selectedBatch),
+                ),
               ),
               const SizedBox(height: 12),
               HtmlFormField(
                 label: 'Notes / Vet Observations',
-                child: TextField(controller: notesCtrl, maxLines: 3, style: const TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Symptoms, treatments attempted...')),
+                child: TextField(controller: notesCtrl, maxLines: 3, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Symptoms, treatments attempted...')),
               ),
             ]),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
             ElevatedButton(
               onPressed: () {
                 final count = int.tryParse(countCtrl.text.trim()) ?? 0;
                 if (count <= 0) return;
-                final batchId = batchCtrl.text.trim().isEmpty ? 'All' : batchCtrl.text.trim();
                 context.read<MortalityProvider>().addRecord(Mortality(
-                  batchId: batchId,
+                  batchId: selectedBatch,
                   count: count,
                   date: DateTime.now(),
                   cause: MortalityCause.values[selectedCause],
                   notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
                 ));
+                // Keep the batch's live bird count in sync
+                context.read<BatchProvider>().adjustCount(selectedBatch, -count);
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: const Text('Mortality logged ✓'),
+                  content: const Text('Mortality logged ✓ — bird count updated'),
                   backgroundColor: AppColors.green.withValues(alpha: 0.9),
                   behavior: SnackBarBehavior.floating,
                 ));
@@ -210,18 +268,18 @@ class MortalityScreen extends StatelessWidget {
           title: const Text('Edit Mortality Record'),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              HtmlFormField(label: 'Number of Birds', child: TextField(controller: countCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Count'))),
+              HtmlFormField(label: 'Number of Birds', child: TextField(controller: countCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Count'))),
               const SizedBox(height: 12),
               HtmlFormField(
                 label: 'Cause',
                 child: DropdownButtonFormField<int>(
                   initialValue: selectedCause,
                   dropdownColor: AppColors.surfaceLight,
-                  style: const TextStyle(color: AppColors.textPrimary),
+                  style: TextStyle(color: AppColors.textPrimary),
                   decoration: htmlInputDec(),
                   items: MortalityCause.values.map((c) => DropdownMenuItem(
                     value: c.index,
-                    child: Text(c.name[0].toUpperCase() + c.name.substring(1), style: const TextStyle(color: AppColors.textPrimary)),
+                    child: Text(c.name[0].toUpperCase() + c.name.substring(1), style: TextStyle(color: AppColors.textPrimary)),
                   )).toList(),
                   onChanged: (v) => ss(() => selectedCause = v ?? 0),
                 ),
@@ -229,12 +287,14 @@ class MortalityScreen extends StatelessWidget {
             ]),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
             ElevatedButton(
               onPressed: () {
                 final count = int.tryParse(countCtrl.text) ?? 0;
                 if (count <= 0) return;
                 provider.updateRecord(mort.copyWith(count: count, cause: MortalityCause.values[selectedCause]));
+                // Apply the difference to the batch's live count
+                context.read<BatchProvider>().adjustCount(mort.batchId, mort.count - count);
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Record updated ✏️'), backgroundColor: AppColors.cyan, behavior: SnackBarBehavior.floating));
               },
@@ -251,12 +311,17 @@ class MortalityScreen extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Record?'),
-        content: const Text('This action cannot be undone.', style: TextStyle(color: AppColors.textSecondary)),
+        content: Text('This action cannot be undone.', style: TextStyle(color: AppColors.textSecondary)),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.red, foregroundColor: Colors.white),
-            onPressed: () { provider.removeRecord(mort.id); Navigator.pop(ctx); },
+            onPressed: () {
+              provider.removeRecord(mort.id);
+              // Restore the birds to the batch's live count
+              context.read<BatchProvider>().adjustCount(mort.batchId, mort.count);
+              Navigator.pop(ctx);
+            },
             child: const Text('Delete'),
           ),
         ],

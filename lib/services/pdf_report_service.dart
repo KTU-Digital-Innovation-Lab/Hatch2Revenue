@@ -7,6 +7,8 @@ import '../models/financial_transaction.dart';
 import '../utils/currency_formatter.dart';
 
 class PdfReportService {
+  /// Builds the farm report. With [share] true the platform share sheet
+  /// opens (WhatsApp, email, ...); otherwise the print/preview dialog.
   static Future<void> generateFarmReport({
     required BuildContext context,
     required String farmName,
@@ -18,6 +20,7 @@ class PdfReportService {
     required double totalExpenses,
     required double netProfit,
     required List<FinancialTransaction> transactions,
+    bool share = false,
   }) async {
     final pdf = pw.Document();
     final date = DateFormat('d MMMM yyyy').format(DateTime.now());
@@ -107,10 +110,16 @@ class PdfReportService {
       ),
     );
 
-    await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => pdf.save(),
-      name: 'FarmReport_${DateFormat('yyyyMMdd').format(DateTime.now())}.pdf',
-    );
+    final filename =
+        'FarmReport_${DateFormat('yyyyMMdd').format(DateTime.now())}.pdf';
+    if (share) {
+      await Printing.sharePdf(bytes: await pdf.save(), filename: filename);
+    } else {
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => pdf.save(),
+        name: filename,
+      );
+    }
   }
 
   // Legacy stub kept for compatibility

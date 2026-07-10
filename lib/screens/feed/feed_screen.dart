@@ -2,10 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import '../../models/feed_catalog_item.dart';
 import '../../models/feed_record.dart';
+import '../../models/financial_transaction.dart';
+import '../../services/sync_service.dart';
 import '../../providers/feed_provider.dart';
 import '../../providers/batch_provider.dart';
+import '../../providers/financial_provider.dart';
 import '../../utils/app_colors.dart';
+import '../../utils/currency_formatter.dart';
 import '../../utils/html_widgets.dart';
 
 class FeedScreen extends StatefulWidget {
@@ -50,8 +55,11 @@ class _FeedScreenState extends State<FeedScreen> {
       builder: (context, feedProvider, batchProvider, _) {
         final records  = feedProvider.records;
         final totalKg  = feedProvider.totalFeedConsumed;
+        final stockKg  = feedProvider.totalStockKg;
         final avgDaily = records.isEmpty ? 0.0 : totalKg / records.length;
-        final daysLeft = avgDaily > 0 ? '~${(totalKg / avgDaily).toStringAsFixed(0)} days left' : '— days left';
+        final daysLeft = avgDaily > 0 && stockKg > 0
+            ? '~${(stockKg / avgDaily).toStringAsFixed(0)} days left'
+            : '— days left';
         final recent7  = records.length >= 2 ? records.skip(records.length >= 7 ? records.length - 7 : 0).toList() : <FeedRecord>[];
         final fcr7     = recent7.isNotEmpty
             ? (recent7.fold(0.0, (s, r) => s + r.totalKg) / recent7.length).toStringAsFixed(2)
@@ -66,20 +74,39 @@ class _FeedScreenState extends State<FeedScreen> {
                 title: '🌾 Feed Monitoring System',
                 subtitle: 'Track inventory levels, daily logs, and Feed Conversion Ratio',
                 action: Row(mainAxisSize: MainAxisSize.min, children: [
-                  GhostBtn(label: '📦 Update Stock', onPressed: () => _showStockDialog(context)),
+                  GhostBtn(label: '📦 Add Stock', onPressed: () => _showStockDialog(context, feedProvider)),
                   const SizedBox(width: 8),
                   PrimaryBtn(label: '+ Log Consumption', onPressed: () => _showLogDialog(context, feedProvider)),
                 ]),
               ),
 
-              KpiCard(label: 'Stock (kg)', value: totalKg.toStringAsFixed(0), sub: daysLeft, icon: '📦', accentColor: AppColors.amber),
-              const SizedBox(height: 12),
-              KpiCard(label: 'Avg Daily (kg)', value: avgDaily.toStringAsFixed(0), icon: '📅', accentColor: AppColors.green),
-              const SizedBox(height: 12),
-              KpiCard(label: 'FCR (7-day)', value: fcr7, icon: '⚖️', accentColor: AppColors.cyan),
-              const SizedBox(height: 12),
-              KpiCard(label: 'Total Logs', value: '${records.length}', icon: '📋', accentColor: AppColors.purple),
+              ..._buildAlerts(feedProvider),
+
+              KpiGrid(children: [
+                KpiCard(label: 'Stock (kg)', value: stockKg.toStringAsFixed(0), sub: daysLeft, accentColor: AppColors.amber),
+                KpiCard(label: 'Avg Daily (kg)', value: avgDaily.toStringAsFixed(0), accentColor: AppColors.green),
+                KpiCard(label: 'FCR (7-day)', value: fcr7, accentColor: AppColors.cyan),
+                KpiCard(label: 'Total Logs', value: '${records.length}', accentColor: AppColors.purple),
+              ]),
               const SizedBox(height: 18),
+
+              // Stock inventory card
+              HtmlCard(
+                header: HtmlCardHeader(
+                  title: '📦 Feed Stock Inventory',
+                  trailing: feedProvider.stockAlertCount > 0
+                      ? TagChip(label: '${feedProvider.stockAlertCount} alert${feedProvider.stockAlertCount != 1 ? "s" : ""}', color: AppColors.red)
+                      : TagChip(label: '${feedProvider.inventory.length} item${feedProvider.inventory.length != 1 ? "s" : ""}', color: AppColors.green),
+                ),
+                bodyPadding: EdgeInsets.zero,
+                body: feedProvider.inventory.isEmpty
+                    ? HtmlEmptyState(
+                        icon: '📦',
+                        message: 'No stock recorded. Add feed purchases to track inventory and days-left estimates.',
+                        action: PrimaryBtn(label: '+ Add Stock', small: true, onPressed: () => _showStockDialog(context, feedProvider)),
+                      )
+                    : _stockTable(context, feedProvider),
+              ),
 
               _twoCol(
                 left: HtmlCard(
@@ -100,7 +127,7 @@ class _FeedScreenState extends State<FeedScreen> {
                     children: [
                       Text(
                         'FCR = Total Feed Consumed ÷ Total Eggs (or Weight). Lower FCR = better efficiency.',
-                        style: GoogleFonts.dmMono(color: AppColors.textSecondary, fontSize: 11),
+                        style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11),
                       ),
                       const SizedBox(height: 14),
                       _fcrField(_fcrFeedCtrl, 'Total Feed Consumed (kg)', 'e.g. 500'),
@@ -116,11 +143,11 @@ class _FeedScreenState extends State<FeedScreen> {
                           border: Border.all(color: AppColors.border),
                         ),
                         child: Column(children: [
-                          Text('FCR RESULT', style: GoogleFonts.dmMono(color: AppColors.textSecondary, fontSize: 10, letterSpacing: 2)),
+                          Text('FCR RESULT', style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 10, letterSpacing: 2)),
                           const SizedBox(height: 6),
-                          Text(_fcrResult, style: GoogleFonts.syne(color: _fcrColor, fontSize: 34, fontWeight: FontWeight.w800)),
+                          Text(_fcrResult, style: GoogleFonts.poppins(color: _fcrColor, fontSize: 34, fontWeight: FontWeight.w800)),
                           if (_fcrRating.isNotEmpty)
-                            Text(_fcrRating, style: GoogleFonts.dmMono(color: AppColors.textSecondary, fontSize: 10)),
+                            Text(_fcrRating, style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 10)),
                         ]),
                       ),
                     ],
@@ -136,6 +163,51 @@ class _FeedScreenState extends State<FeedScreen> {
     );
   }
 
+  /// Prominent low-stock and expiry alerts, the way FarmNest surfaces
+  /// them — so a farmer never runs out of feed by surprise.
+  List<Widget> _buildAlerts(FeedProvider provider) {
+    final low = provider.inventory.where((i) => i.isLowStock).toList();
+    final expired = provider.inventory.where((i) => i.isExpired).toList();
+    if (low.isEmpty && expired.isEmpty) return const [];
+
+    Widget banner(String text, Color color, IconData icon) => Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: color.withValues(alpha: 0.4)),
+          ),
+          child: Row(children: [
+            Icon(icon, color: color, size: 18),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(text,
+                  style: GoogleFonts.inter(
+                      color: AppColors.textPrimary, fontSize: 12)),
+            ),
+          ]),
+        );
+
+    return [
+      if (expired.isNotEmpty)
+        banner(
+          'Expired feed: ${expired.map((e) => e.feedTypeName).join(", ")}. '
+          'Remove or replace before feeding.',
+          AppColors.red,
+          Icons.warning_amber_rounded,
+        ),
+      if (low.isNotEmpty)
+        banner(
+          'Low stock: ${low.map((e) => "${e.feedTypeName} (${e.quantityKg.toStringAsFixed(0)} kg)").join(", ")}. '
+          'Reorder soon to avoid running out.',
+          AppColors.amber,
+          Icons.inventory_2_outlined,
+        ),
+    ];
+  }
+
   Widget _fcrField(TextEditingController ctrl, String label, String hint) {
     return HtmlFormField(
       label: label,
@@ -143,7 +215,7 @@ class _FeedScreenState extends State<FeedScreen> {
         controller: ctrl,
         keyboardType: TextInputType.number,
         onChanged: (_) => _calcFCR(),
-        style: const TextStyle(color: AppColors.textPrimary),
+        style: TextStyle(color: AppColors.textPrimary),
         decoration: htmlInputDec(hint),
       ),
     );
@@ -163,10 +235,10 @@ class _FeedScreenState extends State<FeedScreen> {
     return HtmlTable(
       headers: ['Date', 'Amount (kg)', 'Type', 'Batch', ''],
       rows: sorted.map((r) => [
-        Text(DateFormat('d MMM yyyy').format(r.date), style: GoogleFonts.dmMono(color: AppColors.textSecondary, fontSize: 11)),
-        Text('${r.totalKg.toStringAsFixed(1)} kg', style: GoogleFonts.dmMono(color: AppColors.cyan, fontWeight: FontWeight.w500, fontSize: 12)),
-        Text(r.feedTypeName, style: GoogleFonts.dmMono(color: AppColors.textPrimary, fontSize: 11)),
-        Text(r.batchId.length > 8 ? r.batchId.substring(0, 8) : r.batchId, style: GoogleFonts.dmMono(color: AppColors.textSecondary, fontSize: 11)),
+        Text(DateFormat('d MMM yyyy').format(r.date), style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
+        Text('${r.totalKg.toStringAsFixed(1)} kg', style: GoogleFonts.inter(color: AppColors.cyan, fontWeight: FontWeight.w500, fontSize: 12)),
+        Text(r.feedTypeName, style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11)),
+        Text(r.batchId.length > 8 ? r.batchId.substring(0, 8) : r.batchId, style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
         Row(mainAxisSize: MainAxisSize.min, children: [
           EditBtn(onTap: () => _showEditDialog(context, r, provider)),
           DelBtn(onTap: () => provider.removeRecord(r.id)),
@@ -175,68 +247,335 @@ class _FeedScreenState extends State<FeedScreen> {
     );
   }
 
-  void _showStockDialog(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-      content: Text('Stock is calculated from consumption logs'),
-      behavior: SnackBarBehavior.floating,
-    ));
+  Widget _stockTable(BuildContext context, FeedProvider provider) {
+    return HtmlTable(
+      headers: ['Feed Type', 'Qty (kg)', 'Expiry', 'Status', ''],
+      rows: provider.inventory.map((i) {
+        final String status;
+        final Color statusColor;
+        if (i.isExpired) {
+          status = 'Expired';
+          statusColor = AppColors.red;
+        } else if (i.isLowStock) {
+          status = 'Low';
+          statusColor = AppColors.amber;
+        } else {
+          status = 'OK';
+          statusColor = AppColors.green;
+        }
+        return [
+          Text(i.feedTypeName, style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 12)),
+          Text(i.quantityKg.toStringAsFixed(0), style: GoogleFonts.inter(color: AppColors.cyan, fontWeight: FontWeight.w500, fontSize: 12)),
+          Text(DateFormat('d MMM yyyy').format(i.expiryDate), style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
+          TagChip(label: status, color: statusColor),
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            EditBtn(onTap: () => _showStockDialog(context, provider, existing: i)),
+            DelBtn(onTap: () => _confirmDeleteStock(context, i, provider)),
+          ]),
+        ];
+      }).toList(),
+    );
+  }
+
+  /// Add (existing == null) or edit a stock item.
+  void _showStockDialog(BuildContext context, FeedProvider provider, {FeedInventory? existing}) {
+    final typeCtrl  = TextEditingController(text: existing?.feedTypeName ?? '');
+    final qtyCtrl   = TextEditingController(text: existing != null ? existing.quantityKg.toStringAsFixed(0) : '');
+    final priceCtrl = TextEditingController(text: existing != null && existing.unitPrice > 0 ? '${existing.unitPrice}' : '');
+    final supplierCtrl = TextEditingController(text: existing?.supplier ?? '');
+    DateTime expiryDate = existing?.expiryDate ?? DateTime.now().add(const Duration(days: 90));
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, ss) => AlertDialog(
+          title: Text(existing == null ? '📦 Add Feed Stock' : 'Edit Feed Stock'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              HtmlFormField(
+                label: 'Feed Type',
+                child: TextField(controller: typeCtrl, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. Layer Mash')),
+              ),
+              const SizedBox(height: 12),
+              HtmlFormField(
+                label: 'Quantity (kg)',
+                child: TextField(controller: qtyCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. 500')),
+              ),
+              const SizedBox(height: 12),
+              HtmlFormField(
+                label: 'Unit Price per kg (${CurrencyFormatter.currencySymbol}) — optional',
+                child: TextField(controller: priceCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('New stock cost auto-logged as expense')),
+              ),
+              const SizedBox(height: 12),
+              HtmlFormField(
+                label: 'Expiry Date',
+                child: HtmlDateTile(
+                  date: expiryDate,
+                  onTap: () async {
+                    final d = await showDatePicker(context: ctx, initialDate: expiryDate, firstDate: DateTime(2020), lastDate: DateTime.now().add(const Duration(days: 365 * 3)));
+                    if (d != null) ss(() => expiryDate = d);
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+              HtmlFormField(
+                label: 'Supplier — optional',
+                child: TextField(controller: supplierCtrl, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. Agrifeeds Ltd')),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
+            ElevatedButton(
+              onPressed: () {
+                final type = typeCtrl.text.trim();
+                final qty  = double.tryParse(qtyCtrl.text.trim()) ?? 0;
+                if (type.isEmpty || qty <= 0) return;
+                final price = double.tryParse(priceCtrl.text.trim()) ?? 0;
+                final supplier = supplierCtrl.text.trim().isEmpty ? null : supplierCtrl.text.trim();
+
+                if (existing == null) {
+                  final item = FeedInventory(
+                    feedTypeName: type,
+                    quantityKg: qty,
+                    unitPrice: price,
+                    expiryDate: expiryDate,
+                    supplier: supplier,
+                  );
+                  provider.addToInventory(item);
+                  // Auto-post the purchase to Financials
+                  if (item.totalValue > 0) {
+                    context.read<FinancialProvider>().addTransaction(
+                      FinancialTransaction(
+                        date: DateTime.now(),
+                        type: TransactionType.expense,
+                        category: TransactionCategory.feed,
+                        amount: item.totalValue,
+                        description: 'Feed stock: ${qty.toStringAsFixed(0)}kg $type',
+                      ),
+                    );
+                  }
+                } else {
+                  provider.updateInventory(existing.copyWith(
+                    feedTypeName: type,
+                    quantityKg: qty,
+                    unitPrice: price,
+                    expiryDate: expiryDate,
+                    supplier: supplier,
+                  ));
+                }
+
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(existing == null ? 'Stock added ✓' : 'Stock updated ✏️'),
+                  backgroundColor: AppColors.green.withValues(alpha: 0.9),
+                  behavior: SnackBarBehavior.floating,
+                ));
+              },
+              child: Text(existing == null ? 'Add Stock' : 'Save Changes'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _confirmDeleteStock(BuildContext context, FeedInventory item, FeedProvider provider) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Stock Item?'),
+        content: Text('Remove "${item.feedTypeName}" (${item.quantityKg.toStringAsFixed(0)}kg) from inventory?', style: TextStyle(color: AppColors.textSecondary)),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.red, foregroundColor: Colors.white),
+            onPressed: () { provider.removeInventory(item.id); Navigator.pop(ctx); },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showLogDialog(BuildContext context, FeedProvider feedProvider) {
     final amountCtrl = TextEditingController();
     final typeCtrl   = TextEditingController();
-    final batchCtrl  = TextEditingController();
+    final costCtrl   = TextEditingController();
+    final batches = context.read<BatchProvider>().batches;
+    final batchOptions = [...batches.map((b) => b.name), 'All'];
+    String selectedBatch = batchOptions.first;
+
+    // Owner-priced catalog: when the farm has official prices, the
+    // worker picks a feed and enters BAGS — the cost is computed from
+    // the owner's price and cannot be typed in.
+    final catalog = context.read<SyncService>().catalog;
+    final useCatalog = catalog.isNotEmpty;
+    FeedCatalogItem? selectedFeed = useCatalog ? catalog.first : null;
+    double bags = 0;
 
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('🌾 Log Daily Feed Consumption'),
-        content: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            HtmlFormField(label: 'Date', child: HtmlDateTile(date: DateTime.now())),
-            const SizedBox(height: 12),
-            HtmlFormField(
-              label: 'Amount Consumed (kg)',
-              child: TextField(controller: amountCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. 520')),
-            ),
-            const SizedBox(height: 12),
-            HtmlFormField(
-              label: 'Feed Type',
-              child: TextField(controller: typeCtrl, style: const TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. Layer Mash')),
-            ),
-            const SizedBox(height: 12),
-            HtmlFormField(
-              label: 'Batch / Flock',
-              child: TextField(controller: batchCtrl, style: const TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. All or B-2026-01')),
-            ),
-          ]),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
-          ElevatedButton(
-            onPressed: () {
-              final kg = double.tryParse(amountCtrl.text.trim()) ?? 0;
-              if (kg <= 0) return;
-              final batchId = batchCtrl.text.trim().isEmpty ? 'All' : batchCtrl.text.trim();
-              final type = _parseFeedType(typeCtrl.text.trim());
-              feedProvider.addRecord(FeedRecord(
-                batchId: batchId,
-                feedType: type,
-                bagsUsed: 1,
-                kgPerBag: kg,
-                unitPricePerBag: 0,
-                date: DateTime.now(),
-              ));
-              Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: const Text('Consumption logged ✓'),
-                backgroundColor: AppColors.green.withValues(alpha: 0.9),
-                behavior: SnackBarBehavior.floating,
-              ));
-            },
-            child: const Text('Save Log'),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, ss) => AlertDialog(
+          title: const Text('🌾 Log Daily Feed Consumption'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              HtmlFormField(label: 'Date', child: HtmlDateTile(date: DateTime.now())),
+              const SizedBox(height: 12),
+              if (useCatalog) ...[
+                HtmlFormField(
+                  label: 'Feed Type (official prices)',
+                  child: DropdownButtonFormField<FeedCatalogItem>(
+                    initialValue: selectedFeed,
+                    dropdownColor: AppColors.surfaceLight,
+                    style: TextStyle(color: AppColors.textPrimary),
+                    decoration: htmlInputDec(),
+                    items: catalog
+                        .map((c) => DropdownMenuItem(
+                              value: c,
+                              child: Text(
+                                '${c.feedName} — ${CurrencyFormatter.currencySymbol}${c.pricePerBag.toStringAsFixed(0)}/bag',
+                                style: TextStyle(color: AppColors.textPrimary, fontSize: 13),
+                              ),
+                            ))
+                        .toList(),
+                    onChanged: (v) => ss(() => selectedFeed = v),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                HtmlFormField(
+                  label: 'Bags Used',
+                  child: TextField(
+                    controller: amountCtrl,
+                    keyboardType: TextInputType.number,
+                    style: TextStyle(color: AppColors.textPrimary),
+                    decoration: htmlInputDec('e.g. 3 or 2.5'),
+                    onChanged: (v) => ss(() => bags = double.tryParse(v.trim()) ?? 0),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // Locked cost — computed, never typed.
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.amber.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.amber.withValues(alpha: 0.4)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(Icons.lock_outline, size: 14, color: AppColors.amber),
+                          const SizedBox(width: 6),
+                          Text('COST (SET BY OWNER)',
+                              style: TextStyle(color: AppColors.textSecondary, fontSize: 10, letterSpacing: 1)),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        selectedFeed == null || bags <= 0
+                            ? '—'
+                            : '${CurrencyFormatter.currencySymbol}${(bags * selectedFeed!.pricePerBag).toStringAsFixed(2)}'
+                              '  ·  ${(bags * selectedFeed!.kgPerBag).toStringAsFixed(0)} kg',
+                        style: TextStyle(color: AppColors.amber, fontSize: 18, fontWeight: FontWeight.w700),
+                      ),
+                    ],
+                  ),
+                ),
+              ] else ...[
+                HtmlFormField(
+                  label: 'Amount Consumed (kg)',
+                  child: TextField(controller: amountCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. 520')),
+                ),
+                const SizedBox(height: 12),
+                HtmlFormField(
+                  label: 'Feed Type',
+                  child: TextField(controller: typeCtrl, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. Layer Mash')),
+                ),
+                const SizedBox(height: 12),
+                HtmlFormField(
+                  label: 'Cost (${CurrencyFormatter.currencySymbol}) — optional',
+                  child: TextField(controller: costCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Auto-logged as feed expense')),
+                ),
+              ],
+              const SizedBox(height: 12),
+              HtmlFormField(
+                label: 'Batch / Flock',
+                child: DropdownButtonFormField<String>(
+                  initialValue: selectedBatch,
+                  dropdownColor: AppColors.surfaceLight,
+                  style: TextStyle(color: AppColors.textPrimary),
+                  decoration: htmlInputDec(),
+                  items: batchOptions.map((b) => DropdownMenuItem(
+                    value: b,
+                    child: Text(b, style: TextStyle(color: AppColors.textPrimary)),
+                  )).toList(),
+                  onChanged: (v) => ss(() => selectedBatch = v ?? selectedBatch),
+                ),
+              ),
+            ]),
           ),
-        ],
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
+            ElevatedButton(
+              onPressed: () {
+                final double kg;
+                final double cost;
+                final FeedType type;
+                if (useCatalog) {
+                  final feed = selectedFeed;
+                  final b = double.tryParse(amountCtrl.text.trim()) ?? 0;
+                  if (feed == null || b <= 0) return;
+                  kg = b * feed.kgPerBag;
+                  cost = b * feed.pricePerBag; // owner's price — locked
+                  type = _parseFeedType(feed.feedName);
+                } else {
+                  kg = double.tryParse(amountCtrl.text.trim()) ?? 0;
+                  if (kg <= 0) return;
+                  cost = double.tryParse(costCtrl.text.trim()) ?? 0;
+                  type = _parseFeedType(typeCtrl.text.trim());
+                }
+                final record = FeedRecord(
+                  batchId: selectedBatch,
+                  feedType: type,
+                  bagsUsed: 1,
+                  kgPerBag: kg,
+                  unitPricePerBag: cost,
+                  date: DateTime.now(),
+                );
+                feedProvider.addRecord(record);
+
+                // Auto-post the cost to Financials
+                if (cost > 0) {
+                  context.read<FinancialProvider>().addTransaction(
+                    FinancialTransaction(
+                      date: DateTime.now(),
+                      type: TransactionType.expense,
+                      category: TransactionCategory.feed,
+                      amount: cost,
+                      batchId: selectedBatch,
+                      description: 'Feed: ${kg.toStringAsFixed(0)}kg ${record.feedTypeName}',
+                    ),
+                  );
+                }
+
+                Navigator.pop(ctx);
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(cost > 0
+                      ? 'Consumption logged ✓ — expense posted to Financials'
+                      : 'Consumption logged ✓'),
+                  backgroundColor: AppColors.green.withValues(alpha: 0.9),
+                  behavior: SnackBarBehavior.floating,
+                ));
+              },
+              child: const Text('Save Log'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -261,7 +600,7 @@ class _FeedScreenState extends State<FeedScreen> {
           content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
             HtmlFormField(
               label: 'Amount (kg)',
-              child: TextField(controller: amountCtrl, keyboardType: TextInputType.number, style: const TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('kg')),
+              child: TextField(controller: amountCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('kg')),
             ),
             const SizedBox(height: 12),
             HtmlFormField(
@@ -269,20 +608,20 @@ class _FeedScreenState extends State<FeedScreen> {
               child: DropdownButtonFormField<FeedType>(
                 initialValue: selectedType,
                 dropdownColor: AppColors.surfaceLight,
-                style: const TextStyle(color: AppColors.textPrimary),
+                style: TextStyle(color: AppColors.textPrimary),
                 decoration: htmlInputDec(),
-                items: FeedType.values.map((t) => DropdownMenuItem(value: t, child: Text(t.name[0].toUpperCase() + t.name.substring(1), style: const TextStyle(color: AppColors.textPrimary)))).toList(),
+                items: FeedType.values.map((t) => DropdownMenuItem(value: t, child: Text(t.name[0].toUpperCase() + t.name.substring(1), style: TextStyle(color: AppColors.textPrimary)))).toList(),
                 onChanged: (v) => ss(() => selectedType = v ?? selectedType),
               ),
             ),
           ])),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
             ElevatedButton(
               onPressed: () {
                 final kg = double.tryParse(amountCtrl.text) ?? 0;
                 if (kg <= 0) return;
-                provider.updateRecord(feed.copyWith(feedType: selectedType, bagsUsed: 1, kgPerBag: kg, unitPricePerBag: 0));
+                provider.updateRecord(feed.copyWith(feedType: selectedType, bagsUsed: 1, kgPerBag: kg));
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Record updated ✏️'), backgroundColor: AppColors.cyan, behavior: SnackBarBehavior.floating));
               },

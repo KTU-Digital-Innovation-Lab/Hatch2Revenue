@@ -120,6 +120,7 @@ class Vaccination {
   }
 
   Vaccination copyWith({
+    String? batchId,
     String? vaccineName,
     VaccineType? type,
     DateTime? scheduledDate,
@@ -134,7 +135,7 @@ class Vaccination {
   }) {
     return Vaccination(
       id: id,
-      batchId: batchId,
+      batchId: batchId ?? this.batchId,
       vaccineName: vaccineName ?? this.vaccineName,
       type: type ?? this.type,
       scheduledDate: scheduledDate ?? this.scheduledDate,

@@ -1,0 +1,158 @@
+import 'dart:io';
+import 'package:intl/intl.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import '../models/batch.dart';
+import '../models/egg_production.dart';
+import '../models/feed_record.dart';
+import '../models/financial_transaction.dart';
+import '../models/mortality.dart';
+import '../models/vaccination.dart';
+
+/// Exports all farm records as CSV files (one file per record type)
+/// into a timestamped folder in the app's documents directory.
+class CsvExportService {
+  static final _date = DateFormat('yyyy-MM-dd');
+
+  static String _esc(Object? v) {
+    final s = v?.toString() ?? '';
+    if (s.contains(',') || s.contains('"') || s.contains('\n')) {
+      return '"${s.replaceAll('"', '""')}"';
+    }
+    return s;
+  }
+
+  static String _row(List<Object?> cells) => cells.map(_esc).join(',');
+
+  static Future<Directory> exportAll({
+    required List<Batch> batches,
+    required List<Vaccination> vaccinations,
+    required List<FeedRecord> feedRecords,
+    required List<EggProduction> eggRecords,
+    required List<Mortality> mortalityRecords,
+    required List<FinancialTransaction> transactions,
+    List<FeedInventory> feedInventory = const [],
+  }) async {
+    final docs = await getApplicationDocumentsDirectory();
+    final stamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
+    final dir = Directory('${docs.path}${Platform.pathSeparator}hatch2revenue_export_$stamp');
+    await dir.create(recursive: true);
+
+    await _write(dir, 'batches.csv', [
+      _row(['Batch ID', 'Breed', 'Stage', 'Initial Birds', 'Current Birds', 'Hatch Date', 'Purchase Cost', 'Notes']),
+      ...batches.map((b) => _row([
+            b.name,
+            b.source,
+            b.typeName,
+            b.initialCount,
+            b.currentCount,
+            _date.format(b.hatchDate),
+            b.initialCost,
+            b.description,
+          ])),
+    ]);
+
+    await _write(dir, 'vaccinations.csv', [
+      _row(['Vaccine', 'Batch', 'Type', 'Scheduled', 'Administered', 'Status', 'Route/Unit', 'Notes']),
+      ...vaccinations.map((v) => _row([
+            v.vaccineName,
+            v.batchId,
+            v.typeName,
+            _date.format(v.scheduledDate),
+            v.administeredDate != null ? _date.format(v.administeredDate!) : '',
+            v.statusName,
+            v.unit,
+            v.notes,
+          ])),
+    ]);
+
+    await _write(dir, 'feed_records.csv', [
+      _row(['Date', 'Batch', 'Feed Type', 'Total Kg', 'Cost', 'Supplier', 'Notes']),
+      ...feedRecords.map((r) => _row([
+            _date.format(r.date),
+            r.batchId,
+            r.feedTypeName,
+            r.totalKg,
+            r.totalCost,
+            r.supplier,
+            r.notes,
+          ])),
+    ]);
+
+    await _write(dir, 'egg_production.csv', [
+      _row(['Date', 'Batch', 'Eggs', 'Damaged', 'Price/Egg', 'Revenue', 'Notes']),
+      ...eggRecords.map((e) => _row([
+            _date.format(e.date),
+            e.batchId,
+            e.eggCount,
+            e.damagedCount,
+            e.pricePerEgg,
+            e.revenue,
+            e.notes,
+          ])),
+    ]);
+
+    await _write(dir, 'feed_inventory.csv', [
+      _row(['Feed Type', 'Quantity Kg', 'Unit Price/Kg', 'Total Value', 'Expiry', 'Supplier']),
+      ...feedInventory.map((i) => _row([
+            i.feedTypeName,
+            i.quantityKg,
+            i.unitPrice,
+            i.totalValue,
+            _date.format(i.expiryDate),
+            i.supplier,
+          ])),
+    ]);
+
+    await _write(dir, 'mortality.csv', [
+      _row(['Date', 'Batch', 'Deaths', 'Cause', 'Notes']),
+      ...mortalityRecords.map((m) => _row([
+            _date.format(m.date),
+            m.batchId,
+            m.count,
+            m.causeName,
+            m.notes,
+          ])),
+    ]);
+
+    await _write(dir, 'transactions.csv', [
+      _row(['Date', 'Type', 'Category', 'Amount', 'Batch', 'Description']),
+      ...transactions.map((t) => _row([
+            _date.format(t.date),
+            t.type == TransactionType.income ? 'Income' : 'Expense',
+            t.categoryName,
+            t.amount,
+            t.batchId,
+            t.description,
+          ])),
+    ]);
+
+    return dir;
+  }
+
+  static Future<void> _write(
+    Directory dir,
+    String name,
+    List<String> lines,
+  ) async {
+    final file = File('${dir.path}${Platform.pathSeparator}$name');
+    await file.writeAsString(lines.join('\n'));
+  }
+
+  /// Opens the platform share sheet with every CSV in [dir]
+  /// (WhatsApp, email, Drive, etc.).
+  static Future<void> shareExport(Directory dir) async {
+    final files = dir
+        .listSync()
+        .whereType<File>()
+        .where((f) => f.path.endsWith('.csv'))
+        .map((f) => XFile(f.path, mimeType: 'text/csv'))
+        .toList();
+    if (files.isEmpty) return;
+    await SharePlus.instance.share(ShareParams(
+      files: files,
+      text: 'Hatch2Revenue farm data export',
+      subject: 'Hatch2Revenue export',
+    ));
+  }
+}

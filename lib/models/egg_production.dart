@@ -7,6 +7,7 @@ class EggProduction {
   final int eggCount;
   final int damagedCount;
   final double pricePerEgg;
+  final String? period; // Morning | Afternoon | Evening | null
   final String? notes;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -18,12 +19,15 @@ class EggProduction {
     required this.eggCount,
     this.damagedCount = 0,
     required this.pricePerEgg,
+    this.period,
     this.notes,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) : id = id ?? const Uuid().v4(),
        createdAt = createdAt ?? DateTime.now(),
        updatedAt = updatedAt ?? DateTime.now();
+
+  int get goodCount => (eggCount - damagedCount).clamp(0, eggCount);
 
   double get revenue => eggCount * pricePerEgg;
 
@@ -37,6 +41,7 @@ class EggProduction {
       'eggCount': eggCount,
       'damagedCount': damagedCount,
       'pricePerEgg': pricePerEgg,
+      'period': period,
       'notes': notes,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
@@ -51,6 +56,7 @@ class EggProduction {
       eggCount: map['eggCount'],
       damagedCount: map['damagedCount'] ?? 0,
       pricePerEgg: map['pricePerEgg']?.toDouble() ?? 1.0,
+      period: map['period'] as String?,
       notes: map['notes'],
       createdAt: DateTime.parse(map['createdAt']),
       updatedAt: DateTime.parse(map['updatedAt']),
@@ -63,6 +69,7 @@ class EggProduction {
     int? eggCount,
     int? damagedCount,
     double? pricePerEgg,
+    String? period,
     String? notes,
   }) {
     return EggProduction(
@@ -72,6 +79,7 @@ class EggProduction {
       eggCount: eggCount ?? this.eggCount,
       damagedCount: damagedCount ?? this.damagedCount,
       pricePerEgg: pricePerEgg ?? this.pricePerEgg,
+      period: period ?? this.period,
       notes: notes ?? this.notes,
       createdAt: createdAt,
       updatedAt: DateTime.now(),

@@ -1,11 +1,29 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
+/// Local SQLite store — the offline source of truth.
+///
+/// Sync design: every insert/update/soft-delete also queues the row id
+/// in `sync_outbox`. The SyncService drains that queue to Supabase when
+/// the farmer has internet, and applies remote changes back through the
+/// `applyRemote` methods (which do NOT touch the outbox, so pulled rows
+/// are never echoed back up).
 class DatabaseService {
   static final DatabaseService instance = DatabaseService._init();
   static Database? _database;
 
   DatabaseService._init();
+
+  /// Tables that participate in cloud sync.
+  static const syncedTables = [
+    'batches',
+    'vaccinations',
+    'feed_records',
+    'feed_inventory',
+    'mortality',
+    'egg_production',
+    'financial_transactions',
+  ];
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -13,19 +31,198 @@ class DatabaseService {
     return _database!;
   }
 
+  /// Closes the connection (used before restoring a backup). The next
+  /// [database] access reopens it and runs any pending migrations.
+  Future<void> close() async {
+    await _database?.close();
+    _database = null;
+  }
+
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
     return await openDatabase(
       path,
-      version: 2,
+      version: 7,
+      onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
     );
   }
 
+  /// Rebuilds [table] using [createSql], preserving every column that
+  /// exists in both the old and new schema. NOT NULL columns that have
+  /// no old counterpart are filled with the schema default, or a
+  /// type-appropriate zero value. Runs in a transaction so a failure
+  /// leaves the original table untouched. NEVER drop a table in a
+  /// migration — the local database is the farmer's only copy.
+  Future<void> _rebuildTable(
+    Database db,
+    String table,
+    String createSql,
+  ) async {
+    await db.transaction((txn) async {
+      final oldInfo = await txn.rawQuery('PRAGMA table_info($table)');
+      if (oldInfo.isEmpty) {
+        // Table doesn't exist yet — just create it.
+        await txn.execute(createSql);
+        return;
+      }
+      final oldCols = oldInfo.map((r) => r['name'] as String).toSet();
+
+      await txn.execute('ALTER TABLE $table RENAME TO ${table}_migrating');
+      await txn.execute(createSql);
+
+      final newInfo = await txn.rawQuery('PRAGMA table_info($table)');
+      final dst = <String>[];
+      final src = <String>[];
+      for (final col in newInfo) {
+        final name = col['name'] as String;
+        dst.add(name);
+        if (oldCols.contains(name)) {
+          src.add(name);
+        } else if (col['dflt_value'] != null) {
+          src.add(col['dflt_value'] as String);
+        } else if ((col['notnull'] as int) == 1) {
+          final type = (col['type'] as String).toUpperCase();
+          src.add(
+            type.contains('INT') || type.contains('REAL') ? '0' : "''",
+          );
+        } else {
+          src.add('NULL');
+        }
+      }
+      await txn.execute(
+        'INSERT INTO $table (${dst.join(', ')}) '
+        'SELECT ${src.join(', ')} FROM ${table}_migrating',
+      );
+      await txn.execute('DROP TABLE ${table}_migrating');
+    });
+  }
+
+  Future<void> _createSyncTables(DatabaseExecutor db) async {
+    // One outbox row per changed record: pushing always sends the row's
+    // CURRENT state, so repeated edits collapse into a single upload.
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sync_outbox (
+        tableName TEXT NOT NULL,
+        rowId TEXT NOT NULL,
+        queuedAt TEXT NOT NULL,
+        PRIMARY KEY (tableName, rowId)
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS sync_meta (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    ''');
+  }
+
+  Future<void> _createIndexes(DatabaseExecutor db) async {
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_vaccinations_batch ON vaccinations(batchId)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_feed_records_batch ON feed_records(batchId)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_mortality_batch ON mortality(batchId)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_egg_production_batch ON egg_production(batchId)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_egg_production_date ON egg_production(date)',
+    );
+    await db.execute(
+      'CREATE INDEX IF NOT EXISTS idx_transactions_date ON financial_transactions(date)',
+    );
+  }
+
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
-    // Handle database upgrades if needed
+    if (oldVersion < 3) {
+      // v3: egg_production and mortality columns aligned with the app
+      // models. Rebuilt in place — shared columns carry over.
+      await _rebuildTable(db, 'egg_production', '''
+        CREATE TABLE egg_production (
+          id TEXT PRIMARY KEY,
+          batchId TEXT NOT NULL,
+          date TEXT NOT NULL,
+          eggCount INTEGER NOT NULL DEFAULT 0,
+          damagedCount INTEGER NOT NULL DEFAULT 0,
+          pricePerEgg REAL NOT NULL DEFAULT 0,
+          notes TEXT,
+          createdAt TEXT NOT NULL DEFAULT '',
+          updatedAt TEXT NOT NULL DEFAULT ''
+        )
+      ''');
+      await _rebuildTable(db, 'mortality', '''
+        CREATE TABLE mortality (
+          id TEXT PRIMARY KEY,
+          batchId TEXT NOT NULL,
+          date TEXT NOT NULL,
+          count INTEGER NOT NULL DEFAULT 0,
+          cause INTEGER,
+          notes TEXT,
+          createdAt TEXT NOT NULL DEFAULT '',
+          updatedAt TEXT NOT NULL DEFAULT ''
+        )
+      ''');
+    }
+    if (oldVersion < 4) {
+      // v4: feed_inventory columns aligned with the FeedInventory model.
+      await _rebuildTable(db, 'feed_inventory', '''
+        CREATE TABLE feed_inventory (
+          id TEXT PRIMARY KEY,
+          feedTypeName TEXT NOT NULL DEFAULT '',
+          quantityKg REAL NOT NULL DEFAULT 0,
+          unitPrice REAL NOT NULL DEFAULT 0,
+          expiryDate TEXT NOT NULL DEFAULT '',
+          supplier TEXT,
+          batchNumber TEXT,
+          createdAt TEXT NOT NULL DEFAULT '',
+          updatedAt TEXT NOT NULL DEFAULT ''
+        )
+      ''');
+    }
+    if (oldVersion < 5) {
+      // v5: cloud-sync groundwork — soft-delete tombstones on every
+      // synced table, the outbox queue, sync cursors, and indexes.
+      for (final table in syncedTables) {
+        final info = await db.rawQuery('PRAGMA table_info($table)');
+        final hasDeletedAt = info.any((c) => c['name'] == 'deletedAt');
+        if (!hasDeletedAt) {
+          await db.execute('ALTER TABLE $table ADD COLUMN deletedAt TEXT');
+        }
+      }
+      await _createSyncTables(db);
+      await _createIndexes(db);
+    }
+    if (oldVersion < 6) {
+      // v6: local cache of the owner-priced feed catalog.
+      await _createCatalogTable(db);
+    }
+    if (oldVersion < 7) {
+      // v7: egg collection period (morning/afternoon/evening).
+      final info = await db.rawQuery('PRAGMA table_info(egg_production)');
+      if (!info.any((c) => c['name'] == 'period')) {
+        await db.execute('ALTER TABLE egg_production ADD COLUMN period TEXT');
+      }
+    }
+  }
+
+  Future<void> _createCatalogTable(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS feed_catalog (
+        id TEXT PRIMARY KEY,
+        feedName TEXT NOT NULL,
+        pricePerBag REAL NOT NULL,
+        kgPerBag REAL NOT NULL DEFAULT 50,
+        marketMin REAL,
+        marketMax REAL
+      )
+    ''');
   }
 
   Future<void> _createDB(Database db, int version) async {
@@ -42,7 +239,8 @@ class DatabaseService {
         initialCost REAL,
         coopId TEXT,
         createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL
+        updatedAt TEXT NOT NULL,
+        deletedAt TEXT
       )
     ''');
 
@@ -63,6 +261,7 @@ class DatabaseService {
         reminderDaysBefore INTEGER NOT NULL,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL,
+        deletedAt TEXT,
         FOREIGN KEY (batchId) REFERENCES batches (id)
       )
     ''');
@@ -81,6 +280,7 @@ class DatabaseService {
         notes TEXT,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL,
+        deletedAt TEXT,
         FOREIGN KEY (batchId) REFERENCES batches (id)
       )
     ''');
@@ -88,15 +288,15 @@ class DatabaseService {
     await db.execute('''
       CREATE TABLE feed_inventory (
         id TEXT PRIMARY KEY,
-        feedType TEXT NOT NULL,
-        bagsInStock INTEGER NOT NULL,
-        kgPerBag REAL NOT NULL DEFAULT 50.0,
-        unitPricePerBag REAL NOT NULL,
+        feedTypeName TEXT NOT NULL,
+        quantityKg REAL NOT NULL,
+        unitPrice REAL NOT NULL DEFAULT 0,
         expiryDate TEXT NOT NULL,
         supplier TEXT,
         batchNumber TEXT,
         createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL
+        updatedAt TEXT NOT NULL,
+        deletedAt TEXT
       )
     ''');
 
@@ -106,12 +306,11 @@ class DatabaseService {
         batchId TEXT NOT NULL,
         date TEXT NOT NULL,
         count INTEGER NOT NULL,
-        cause INTEGER NOT NULL,
+        cause INTEGER,
         notes TEXT,
-        estimatedLoss REAL,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL,
-        FOREIGN KEY (batchId) REFERENCES batches (id)
+        deletedAt TEXT
       )
     ''');
 
@@ -120,13 +319,13 @@ class DatabaseService {
         id TEXT PRIMARY KEY,
         batchId TEXT NOT NULL,
         date TEXT NOT NULL,
-        totalCrates INTEGER NOT NULL,
-        eggsPerCrate INTEGER NOT NULL DEFAULT 30,
-        pricePerCrate REAL NOT NULL,
+        eggCount INTEGER NOT NULL,
+        damagedCount INTEGER NOT NULL DEFAULT 0,
+        pricePerEgg REAL NOT NULL DEFAULT 0,
         notes TEXT,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL,
-        FOREIGN KEY (batchId) REFERENCES batches (id)
+        deletedAt TEXT
       )
     ''');
 
@@ -141,175 +340,262 @@ class DatabaseService {
         batchId TEXT,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL,
+        deletedAt TEXT,
         FOREIGN KEY (batchId) REFERENCES batches (id)
       )
     ''');
+
+    await _createSyncTables(db);
+    await _createIndexes(db);
+    await _createCatalogTable(db);
   }
 
-  // Batch CRUD
-  Future<void> insertBatch(Map<String, dynamic> batch) async {
+  // ---------------------------------------------------------------
+  // Feed catalog cache (owner-set prices, refreshed on every sync so
+  // workers see current prices even when they go offline again).
+  // ---------------------------------------------------------------
+
+  Future<void> replaceCatalog(List<Map<String, dynamic>> rows) async {
     final db = await database;
-    await db.insert('batches', batch);
+    await db.transaction((txn) async {
+      await txn.delete('feed_catalog');
+      for (final row in rows) {
+        await txn.insert('feed_catalog', row);
+      }
+    });
   }
 
-  Future<List<Map<String, dynamic>>> getAllBatches() async {
+  Future<List<Map<String, dynamic>>> getCatalog() async {
     final db = await database;
-    return await db.query('batches', orderBy: 'createdAt DESC');
+    return db.query('feed_catalog', orderBy: 'feedName');
   }
 
-  Future<void> updateBatch(Map<String, dynamic> batch) async {
+  // ---------------------------------------------------------------
+  // Generic synced mutations. All app writes flow through these so
+  // every change lands in the outbox atomically with the data.
+  // ---------------------------------------------------------------
+
+  Future<void> _enqueue(
+    DatabaseExecutor db,
+    String table,
+    String rowId,
+  ) async {
+    await db.insert('sync_outbox', {
+      'tableName': table,
+      'rowId': rowId,
+      'queuedAt': DateTime.now().toIso8601String(),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> _insertSynced(String table, Map<String, dynamic> row) async {
     final db = await database;
-    await db.update(
-      'batches',
-      batch,
-      where: 'id = ?',
-      whereArgs: [batch['id']],
+    await db.transaction((txn) async {
+      await txn.insert(table, row);
+      await _enqueue(txn, table, row['id'] as String);
+    });
+  }
+
+  Future<void> _updateSynced(String table, Map<String, dynamic> row) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.update(table, row, where: 'id = ?', whereArgs: [row['id']]);
+      await _enqueue(txn, table, row['id'] as String);
+    });
+  }
+
+  /// Deletes are tombstones, never real DELETEs: the row must survive
+  /// locally so the deletion can reach the cloud (and other devices).
+  Future<void> _softDeleteSynced(String table, String id) async {
+    final db = await database;
+    final now = DateTime.now().toIso8601String();
+    await db.transaction((txn) async {
+      await txn.update(
+        table,
+        {'deletedAt': now, 'updatedAt': now},
+        where: 'id = ?',
+        whereArgs: [id],
+      );
+      await _enqueue(txn, table, id);
+    });
+  }
+
+  Future<List<Map<String, dynamic>>> _liveRows(
+    String table, {
+    String? orderBy,
+    String? where,
+    List<Object?>? whereArgs,
+  }) async {
+    final db = await database;
+    final liveFilter = 'deletedAt IS NULL';
+    return db.query(
+      table,
+      where: where == null ? liveFilter : '$liveFilter AND ($where)',
+      whereArgs: whereArgs,
+      orderBy: orderBy,
     );
   }
 
-  Future<void> deleteBatch(String id) async {
+  // ---------------------------------------------------------------
+  // Sync plumbing used by SyncService.
+  // ---------------------------------------------------------------
+
+  Future<List<Map<String, dynamic>>> getOutbox() async {
     final db = await database;
-    await db.delete('batches', where: 'id = ?', whereArgs: [id]);
+    return db.query('sync_outbox', orderBy: 'queuedAt ASC');
   }
+
+  Future<int> getOutboxCount() async {
+    final db = await database;
+    final rows = await db.rawQuery('SELECT COUNT(*) AS c FROM sync_outbox');
+    return (rows.first['c'] as int?) ?? 0;
+  }
+
+  Future<void> clearOutboxEntry(String table, String rowId) async {
+    final db = await database;
+    await db.delete(
+      'sync_outbox',
+      where: 'tableName = ? AND rowId = ?',
+      whereArgs: [table, rowId],
+    );
+  }
+
+  Future<Map<String, dynamic>?> getRowById(String table, String id) async {
+    final db = await database;
+    final rows = await db.query(table, where: 'id = ?', whereArgs: [id]);
+    return rows.isEmpty ? null : rows.first;
+  }
+
+  /// Writes a row that arrived from the cloud. Bypasses the outbox so
+  /// pulled data is never echoed back up.
+  Future<void> applyRemote(String table, Map<String, dynamic> row) async {
+    final db = await database;
+    await db.insert(table, row, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  /// Queues every existing row for upload — used right after the user
+  /// signs in for the first time so their history reaches the cloud.
+  Future<void> enqueueAllExisting() async {
+    final db = await database;
+    await db.transaction((txn) async {
+      for (final table in syncedTables) {
+        final rows = await txn.query(table, columns: ['id']);
+        for (final row in rows) {
+          await _enqueue(txn, table, row['id'] as String);
+        }
+      }
+    });
+  }
+
+  Future<String?> getMeta(String key) async {
+    final db = await database;
+    final rows = await db.query(
+      'sync_meta',
+      where: 'key = ?',
+      whereArgs: [key],
+    );
+    return rows.isEmpty ? null : rows.first['value'] as String;
+  }
+
+  Future<void> setMeta(String key, String value) async {
+    final db = await database;
+    await db.insert('sync_meta', {
+      'key': key,
+      'value': value,
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  // ---------------------------------------------------------------
+  // Batch CRUD
+  // ---------------------------------------------------------------
+
+  Future<void> insertBatch(Map<String, dynamic> batch) =>
+      _insertSynced('batches', batch);
+
+  Future<List<Map<String, dynamic>>> getAllBatches() =>
+      _liveRows('batches', orderBy: 'createdAt DESC');
+
+  Future<void> updateBatch(Map<String, dynamic> batch) =>
+      _updateSynced('batches', batch);
+
+  Future<void> deleteBatch(String id) => _softDeleteSynced('batches', id);
 
   // Vaccination CRUD
-  Future<void> insertVaccination(Map<String, dynamic> vac) async {
-    final db = await database;
-    await db.insert('vaccinations', vac);
-  }
+  Future<void> insertVaccination(Map<String, dynamic> vac) =>
+      _insertSynced('vaccinations', vac);
 
-  Future<List<Map<String, dynamic>>> getAllVaccinations() async {
-    final db = await database;
-    return await db.query('vaccinations', orderBy: 'scheduledDate ASC');
-  }
+  Future<List<Map<String, dynamic>>> getAllVaccinations() =>
+      _liveRows('vaccinations', orderBy: 'scheduledDate ASC');
 
-  Future<List<Map<String, dynamic>>> getVaccinationsByBatch(
-    String batchId,
-  ) async {
-    final db = await database;
-    return await db.query(
-      'vaccinations',
-      where: 'batchId = ?',
-      whereArgs: [batchId],
-    );
-  }
+  Future<List<Map<String, dynamic>>> getVaccinationsByBatch(String batchId) =>
+      _liveRows('vaccinations', where: 'batchId = ?', whereArgs: [batchId]);
 
-  Future<void> updateVaccination(Map<String, dynamic> vac) async {
-    final db = await database;
-    await db.update(
-      'vaccinations',
-      vac,
-      where: 'id = ?',
-      whereArgs: [vac['id']],
-    );
-  }
+  Future<void> updateVaccination(Map<String, dynamic> vac) =>
+      _updateSynced('vaccinations', vac);
 
-  Future<void> deleteVaccination(String id) async {
-    final db = await database;
-    await db.delete('vaccinations', where: 'id = ?', whereArgs: [id]);
-  }
+  Future<void> deleteVaccination(String id) =>
+      _softDeleteSynced('vaccinations', id);
 
   // Feed Records CRUD
-  Future<void> insertFeedRecord(Map<String, dynamic> feed) async {
-    final db = await database;
-    await db.insert('feed_records', feed);
-  }
+  Future<void> insertFeedRecord(Map<String, dynamic> feed) =>
+      _insertSynced('feed_records', feed);
 
-  Future<List<Map<String, dynamic>>> getAllFeedRecords() async {
-    final db = await database;
-    return await db.query('feed_records', orderBy: 'date DESC');
-  }
+  Future<List<Map<String, dynamic>>> getAllFeedRecords() =>
+      _liveRows('feed_records', orderBy: 'date DESC');
 
-  Future<void> updateFeedRecord(Map<String, dynamic> feed) async {
-    final db = await database;
-    await db.update(
-      'feed_records',
-      feed,
-      where: 'id = ?',
-      whereArgs: [feed['id']],
-    );
-  }
+  Future<void> updateFeedRecord(Map<String, dynamic> feed) =>
+      _updateSynced('feed_records', feed);
 
-  Future<void> deleteFeedRecord(String id) async {
-    final db = await database;
-    await db.delete('feed_records', where: 'id = ?', whereArgs: [id]);
-  }
+  Future<void> deleteFeedRecord(String id) =>
+      _softDeleteSynced('feed_records', id);
+
+  // Feed Inventory CRUD
+  Future<void> insertFeedInventory(Map<String, dynamic> item) =>
+      _insertSynced('feed_inventory', item);
+
+  Future<List<Map<String, dynamic>>> getAllFeedInventory() =>
+      _liveRows('feed_inventory', orderBy: 'expiryDate ASC');
+
+  Future<void> updateFeedInventory(Map<String, dynamic> item) =>
+      _updateSynced('feed_inventory', item);
+
+  Future<void> deleteFeedInventory(String id) =>
+      _softDeleteSynced('feed_inventory', id);
 
   // Mortality CRUD
-  Future<void> insertMortality(Map<String, dynamic> mort) async {
-    final db = await database;
-    await db.insert('mortality', mort);
-  }
+  Future<void> insertMortality(Map<String, dynamic> mort) =>
+      _insertSynced('mortality', mort);
 
-  Future<List<Map<String, dynamic>>> getAllMortality() async {
-    final db = await database;
-    return await db.query('mortality', orderBy: 'date DESC');
-  }
+  Future<List<Map<String, dynamic>>> getAllMortality() =>
+      _liveRows('mortality', orderBy: 'date DESC');
 
-  Future<void> updateMortality(Map<String, dynamic> mort) async {
-    final db = await database;
-    await db.update(
-      'mortality',
-      mort,
-      where: 'id = ?',
-      whereArgs: [mort['id']],
-    );
-  }
+  Future<void> updateMortality(Map<String, dynamic> mort) =>
+      _updateSynced('mortality', mort);
 
-  Future<void> deleteMortality(String id) async {
-    final db = await database;
-    await db.delete('mortality', where: 'id = ?', whereArgs: [id]);
-  }
+  Future<void> deleteMortality(String id) => _softDeleteSynced('mortality', id);
 
   // Egg Production CRUD
-  Future<void> insertEggProduction(Map<String, dynamic> prod) async {
-    final db = await database;
-    await db.insert('egg_production', prod);
-  }
+  Future<void> insertEggProduction(Map<String, dynamic> prod) =>
+      _insertSynced('egg_production', prod);
 
-  Future<List<Map<String, dynamic>>> getAllEggProduction() async {
-    final db = await database;
-    return await db.query('egg_production', orderBy: 'date DESC');
-  }
+  Future<List<Map<String, dynamic>>> getAllEggProduction() =>
+      _liveRows('egg_production', orderBy: 'date DESC');
 
-  Future<void> updateEggProduction(Map<String, dynamic> prod) async {
-    final db = await database;
-    await db.update(
-      'egg_production',
-      prod,
-      where: 'id = ?',
-      whereArgs: [prod['id']],
-    );
-  }
+  Future<void> updateEggProduction(Map<String, dynamic> prod) =>
+      _updateSynced('egg_production', prod);
 
-  Future<void> deleteEggProduction(String id) async {
-    final db = await database;
-    await db.delete('egg_production', where: 'id = ?', whereArgs: [id]);
-  }
+  Future<void> deleteEggProduction(String id) =>
+      _softDeleteSynced('egg_production', id);
 
   // Financial Transactions CRUD
-  Future<void> insertTransaction(Map<String, dynamic> txn) async {
-    final db = await database;
-    await db.insert('financial_transactions', txn);
-  }
+  Future<void> insertTransaction(Map<String, dynamic> txn) =>
+      _insertSynced('financial_transactions', txn);
 
-  Future<List<Map<String, dynamic>>> getAllTransactions() async {
-    final db = await database;
-    return await db.query('financial_transactions', orderBy: 'date DESC');
-  }
+  Future<List<Map<String, dynamic>>> getAllTransactions() =>
+      _liveRows('financial_transactions', orderBy: 'date DESC');
 
-  Future<void> updateTransaction(Map<String, dynamic> txn) async {
-    final db = await database;
-    await db.update(
-      'financial_transactions',
-      txn,
-      where: 'id = ?',
-      whereArgs: [txn['id']],
-    );
-  }
+  Future<void> updateTransaction(Map<String, dynamic> txn) =>
+      _updateSynced('financial_transactions', txn);
 
-  Future<void> deleteTransaction(String id) async {
-    final db = await database;
-    await db.delete('financial_transactions', where: 'id = ?', whereArgs: [id]);
-  }
+  Future<void> deleteTransaction(String id) =>
+      _softDeleteSynced('financial_transactions', id);
 }
