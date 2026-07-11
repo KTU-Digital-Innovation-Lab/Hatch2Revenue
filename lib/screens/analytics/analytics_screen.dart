@@ -10,6 +10,7 @@ import '../../providers/batch_provider.dart';
 import '../../models/mortality.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/currency_formatter.dart';
+import '../../utils/units.dart';
 
 class AnalyticsScreen extends StatelessWidget {
   const AnalyticsScreen({super.key});
@@ -41,7 +42,7 @@ class AnalyticsScreen extends StatelessWidget {
           const SizedBox(height: 16),
           _ChartCard(title: '7-Day Egg Forecast', emoji: '🔮', child: _ForecastCard()),
           const SizedBox(height: 16),
-          _ChartCard(title: 'Egg Production (Last 10)', emoji: '🥚', child: _EggProductionChart()),
+          _ChartCard(title: 'Egg Production — Crates (Last 10)', emoji: '🥚', child: _EggProductionChart()),
           const SizedBox(height: 16),
           _ChartCard(title: 'Financial Breakdown', emoji: '💰', child: _FinancialPieChart()),
           const SizedBox(height: 16),
@@ -61,14 +62,14 @@ class AnalyticsScreen extends StatelessWidget {
       children: [
         Expanded(child: _MiniStat(label: 'BATCHES', value: '${batches.length}', color: AppColors.amber)),
         const SizedBox(width: 10),
-        Expanded(child: _MiniStat(label: 'TOTAL EGGS', value: '${eggs.totalEggs}', color: AppColors.green)),
+        Expanded(child: _MiniStat(label: 'TOTAL CRATES', value: Units.crateShort(eggs.totalEggs), color: AppColors.green)),
         const SizedBox(width: 10),
         Expanded(child: _MiniStat(label: 'NET PROFIT', value: '${CurrencyFormatter.currencySymbol}${fin.netProfit.toStringAsFixed(0)}', color: fin.netProfit >= 0 ? AppColors.cyan : AppColors.red)),
       ],
     );
   }
 
-  /// Farm-performance KPIs: laying rate, mortality rate, FCR, cost per egg.
+  /// Farm-performance KPIs: laying rate, mortality rate, FCR, cost per crate.
   Widget _buildKpiGrid(BuildContext context) {
     final batchProvider = context.watch<BatchProvider>();
     final eggs = context.watch<EggProductionProvider>();
@@ -89,9 +90,10 @@ class AnalyticsScreen extends StatelessWidget {
     final eggMassKg = eggs.totalEggs * 0.06;
     final fcr = eggMassKg > 0 ? feed.totalFeedKg / eggMassKg : 0.0;
 
-    // Feed cost per egg produced.
-    final costPerEgg =
-        eggs.totalEggs > 0 ? feed.totalFeedCost / eggs.totalEggs : 0.0;
+    // Feed cost per crate produced.
+    final costPerCrate = eggs.totalEggs > 0
+        ? feed.totalFeedCost / Units.eggsToCrates(eggs.totalEggs)
+        : 0.0;
 
     return Column(children: [
       Row(children: [
@@ -116,8 +118,8 @@ class AnalyticsScreen extends StatelessWidget {
         )),
         const SizedBox(width: 10),
         Expanded(child: _MiniStat(
-          label: 'FEED COST / EGG',
-          value: costPerEgg > 0 ? '${CurrencyFormatter.currencySymbol}${costPerEgg.toStringAsFixed(2)}' : '—',
+          label: 'FEED COST / CRATE',
+          value: costPerCrate > 0 ? '${CurrencyFormatter.currencySymbol}${costPerCrate.toStringAsFixed(2)}' : '—',
           color: AppColors.purple,
         )),
       ]),
@@ -143,9 +145,9 @@ class _ForecastCard extends StatelessWidget {
         children: [
           Text('PROJECTED NEXT 7 DAYS', style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 9, letterSpacing: 0.8)),
           const SizedBox(height: 6),
-          Text('$next7 eggs', style: GoogleFonts.poppins(color: AppColors.amber, fontSize: 26, fontWeight: FontWeight.w800)),
+          Text('${Units.crateShort(next7)} crates', style: GoogleFonts.poppins(color: AppColors.amber, fontSize: 26, fontWeight: FontWeight.w800)),
           const SizedBox(height: 4),
-          Text('≈ ${perDay.toStringAsFixed(0)} eggs/day · linear trend on recent logs', style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 10)),
+          Text('≈ ${Units.crateShort(perDay.round())} crates/day · linear trend on recent logs', style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 10)),
         ],
       )),
       Column(children: [
@@ -225,7 +227,7 @@ class _EggProductionChart extends StatelessWidget {
     if (records.isEmpty) return const _EmptyChart(message: 'No egg production data yet');
 
     final last10 = records.length > 10 ? records.sublist(records.length - 10) : records;
-    final maxY = last10.map((r) => r.eggCount.toDouble()).reduce((a, b) => a > b ? a : b);
+    final maxY = last10.map((r) => Units.eggsToCrates(r.eggCount)).reduce((a, b) => a > b ? a : b);
 
     return SizedBox(
       height: 180,
@@ -238,7 +240,7 @@ class _EggProductionChart extends StatelessWidget {
             touchTooltipData: BarTouchTooltipData(
               getTooltipColor: (_) => AppColors.surfaceLight,
               getTooltipItem: (group, gi, rod, ri) => BarTooltipItem(
-                '${last10[group.x].eggCount} eggs',
+                '${Units.crateShort(last10[group.x].eggCount)} crates',
                 TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 11),
               ),
             ),
@@ -272,7 +274,7 @@ class _EggProductionChart extends StatelessWidget {
           barGroups: last10.asMap().entries.map((e) => BarChartGroupData(
             x: e.key,
             barRods: [BarChartRodData(
-              toY: e.value.eggCount.toDouble(),
+              toY: Units.eggsToCrates(e.value.eggCount),
               color: AppColors.amber,
               width: 16,
               borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),

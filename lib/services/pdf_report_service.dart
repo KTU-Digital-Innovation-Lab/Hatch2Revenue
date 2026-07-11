@@ -5,6 +5,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../models/financial_transaction.dart';
 import '../utils/currency_formatter.dart';
+import '../utils/units.dart';
 
 class PdfReportService {
   /// Builds the farm report. With [share] true the platform share sheet
@@ -62,7 +63,7 @@ class PdfReportService {
             data: [
               ['Total Birds', '$totalBirds'],
               ['Active Batches', '$totalBatches'],
-              ['Total Eggs Produced', '$totalEggs'],
+              ['Total Crates Produced', '${Units.crateShort(totalEggs)} (${Units.crateLabel(totalEggs)})'],
             ],
           ),
           pw.SizedBox(height: 16),

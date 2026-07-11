@@ -8,6 +8,7 @@ import '../models/feed_record.dart';
 import '../models/financial_transaction.dart';
 import '../models/mortality.dart';
 import '../models/vaccination.dart';
+import '../utils/units.dart';
 
 /// Exports all farm records as CSV files (one file per record type)
 /// into a timestamped folder in the app's documents directory.
@@ -67,11 +68,12 @@ class CsvExportService {
     ]);
 
     await _write(dir, 'feed_records.csv', [
-      _row(['Date', 'Batch', 'Feed Type', 'Total Kg', 'Cost', 'Supplier', 'Notes']),
+      _row(['Date', 'Batch', 'Feed Type', 'Bags', 'Total Kg', 'Cost', 'Supplier', 'Notes']),
       ...feedRecords.map((r) => _row([
             _date.format(r.date),
             r.batchId,
             r.feedTypeName,
+            Units.bagShort(r.totalKg),
             r.totalKg,
             r.totalCost,
             r.supplier,
@@ -80,24 +82,26 @@ class CsvExportService {
     ]);
 
     await _write(dir, 'egg_production.csv', [
-      _row(['Date', 'Batch', 'Eggs', 'Damaged', 'Price/Egg', 'Revenue', 'Notes']),
+      _row(['Date', 'Batch', 'Crates', 'Eggs', 'Damaged', 'Price/Crate', 'Revenue', 'Notes']),
       ...eggRecords.map((e) => _row([
             _date.format(e.date),
             e.batchId,
+            Units.crateShort(e.eggCount),
             e.eggCount,
             e.damagedCount,
-            e.pricePerEgg,
+            (e.pricePerEgg * Units.eggsPerCrate).toStringAsFixed(2),
             e.revenue,
             e.notes,
           ])),
     ]);
 
     await _write(dir, 'feed_inventory.csv', [
-      _row(['Feed Type', 'Quantity Kg', 'Unit Price/Kg', 'Total Value', 'Expiry', 'Supplier']),
+      _row(['Feed Type', 'Bags', 'Quantity Kg', 'Price/Bag', 'Total Value', 'Expiry', 'Supplier']),
       ...feedInventory.map((i) => _row([
             i.feedTypeName,
+            Units.bagShort(i.quantityKg),
             i.quantityKg,
-            i.unitPrice,
+            (i.unitPrice * Units.kgPerBag).toStringAsFixed(2),
             i.totalValue,
             _date.format(i.expiryDate),
             i.supplier,

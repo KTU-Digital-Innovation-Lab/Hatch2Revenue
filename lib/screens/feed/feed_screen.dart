@@ -12,6 +12,7 @@ import '../../providers/financial_provider.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/currency_formatter.dart';
 import '../../utils/html_widgets.dart';
+import '../../utils/units.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
@@ -72,7 +73,7 @@ class _FeedScreenState extends State<FeedScreen> {
             children: [
               SectionHeader(
                 title: '🌾 Feed Monitoring System',
-                subtitle: 'Track inventory levels, daily logs, and Feed Conversion Ratio',
+                subtitle: 'Feed is tracked in bags (1 bag = 50 kg) — inventory, daily logs, and FCR',
                 action: Row(mainAxisSize: MainAxisSize.min, children: [
                   GhostBtn(label: '📦 Add Stock', onPressed: () => _showStockDialog(context, feedProvider)),
                   const SizedBox(width: 8),
@@ -83,8 +84,8 @@ class _FeedScreenState extends State<FeedScreen> {
               ..._buildAlerts(feedProvider),
 
               KpiGrid(children: [
-                KpiCard(label: 'Stock (kg)', value: stockKg.toStringAsFixed(0), sub: daysLeft, accentColor: AppColors.amber),
-                KpiCard(label: 'Avg Daily (kg)', value: avgDaily.toStringAsFixed(0), accentColor: AppColors.green),
+                KpiCard(label: 'Stock (bags)', value: Units.bagShort(stockKg), sub: '${stockKg.toStringAsFixed(0)} kg · $daysLeft', accentColor: AppColors.amber),
+                KpiCard(label: 'Avg Daily (bags)', value: Units.bagShort(avgDaily), sub: '${avgDaily.toStringAsFixed(0)} kg/day', accentColor: AppColors.green),
                 KpiCard(label: 'FCR (7-day)', value: fcr7, accentColor: AppColors.cyan),
                 KpiCard(label: 'Total Logs', value: '${records.length}', accentColor: AppColors.purple),
               ]),
@@ -200,7 +201,7 @@ class _FeedScreenState extends State<FeedScreen> {
         ),
       if (low.isNotEmpty)
         banner(
-          'Low stock: ${low.map((e) => "${e.feedTypeName} (${e.quantityKg.toStringAsFixed(0)} kg)").join(", ")}. '
+          'Low stock: ${low.map((e) => "${e.feedTypeName} (${Units.bagShort(e.quantityKg)} bags)").join(", ")}. '
           'Reorder soon to avoid running out.',
           AppColors.amber,
           Icons.inventory_2_outlined,
@@ -233,10 +234,10 @@ class _FeedScreenState extends State<FeedScreen> {
   Widget _logsTable(BuildContext context, List<FeedRecord> records, FeedProvider provider) {
     final sorted = [...records]..sort((a, b) => b.date.compareTo(a.date));
     return HtmlTable(
-      headers: ['Date', 'Amount (kg)', 'Type', 'Batch', ''],
+      headers: ['Date', 'Amount (bags)', 'Type', 'Batch', ''],
       rows: sorted.map((r) => [
         Text(DateFormat('d MMM yyyy').format(r.date), style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
-        Text('${r.totalKg.toStringAsFixed(1)} kg', style: GoogleFonts.inter(color: AppColors.cyan, fontWeight: FontWeight.w500, fontSize: 12)),
+        Text('${Units.bagShort(r.totalKg)} bags', style: GoogleFonts.inter(color: AppColors.cyan, fontWeight: FontWeight.w500, fontSize: 12)),
         Text(r.feedTypeName, style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11)),
         Text(r.batchId.length > 8 ? r.batchId.substring(0, 8) : r.batchId, style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
         Row(mainAxisSize: MainAxisSize.min, children: [
@@ -249,7 +250,7 @@ class _FeedScreenState extends State<FeedScreen> {
 
   Widget _stockTable(BuildContext context, FeedProvider provider) {
     return HtmlTable(
-      headers: ['Feed Type', 'Qty (kg)', 'Expiry', 'Status', ''],
+      headers: ['Feed Type', 'Qty (bags)', 'Expiry', 'Status', ''],
       rows: provider.inventory.map((i) {
         final String status;
         final Color statusColor;
@@ -265,7 +266,7 @@ class _FeedScreenState extends State<FeedScreen> {
         }
         return [
           Text(i.feedTypeName, style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 12)),
-          Text(i.quantityKg.toStringAsFixed(0), style: GoogleFonts.inter(color: AppColors.cyan, fontWeight: FontWeight.w500, fontSize: 12)),
+          Text(Units.bagShort(i.quantityKg), style: GoogleFonts.inter(color: AppColors.cyan, fontWeight: FontWeight.w500, fontSize: 12)),
           Text(DateFormat('d MMM yyyy').format(i.expiryDate), style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
           TagChip(label: status, color: statusColor),
           Row(mainAxisSize: MainAxisSize.min, children: [
@@ -280,8 +281,8 @@ class _FeedScreenState extends State<FeedScreen> {
   /// Add (existing == null) or edit a stock item.
   void _showStockDialog(BuildContext context, FeedProvider provider, {FeedInventory? existing}) {
     final typeCtrl  = TextEditingController(text: existing?.feedTypeName ?? '');
-    final qtyCtrl   = TextEditingController(text: existing != null ? existing.quantityKg.toStringAsFixed(0) : '');
-    final priceCtrl = TextEditingController(text: existing != null && existing.unitPrice > 0 ? '${existing.unitPrice}' : '');
+    final qtyCtrl   = TextEditingController(text: existing != null ? Units.bagShort(existing.quantityKg) : '');
+    final priceCtrl = TextEditingController(text: existing != null && existing.unitPrice > 0 ? (existing.unitPrice * Units.kgPerBag).toStringAsFixed(0) : '');
     final supplierCtrl = TextEditingController(text: existing?.supplier ?? '');
     DateTime expiryDate = existing?.expiryDate ?? DateTime.now().add(const Duration(days: 90));
 
@@ -298,12 +299,12 @@ class _FeedScreenState extends State<FeedScreen> {
               ),
               const SizedBox(height: 12),
               HtmlFormField(
-                label: 'Quantity (kg)',
-                child: TextField(controller: qtyCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. 500')),
+                label: 'Quantity (bags — 1 bag = 50 kg)',
+                child: TextField(controller: qtyCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. 10')),
               ),
               const SizedBox(height: 12),
               HtmlFormField(
-                label: 'Unit Price per kg (${CurrencyFormatter.currencySymbol}) — optional',
+                label: 'Price per bag (${CurrencyFormatter.currencySymbol}) — optional',
                 child: TextField(controller: priceCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('New stock cost auto-logged as expense')),
               ),
               const SizedBox(height: 12),
@@ -329,9 +330,11 @@ class _FeedScreenState extends State<FeedScreen> {
             ElevatedButton(
               onPressed: () {
                 final type = typeCtrl.text.trim();
-                final qty  = double.tryParse(qtyCtrl.text.trim()) ?? 0;
-                if (type.isEmpty || qty <= 0) return;
-                final price = double.tryParse(priceCtrl.text.trim()) ?? 0;
+                final bags = double.tryParse(qtyCtrl.text.trim()) ?? 0;
+                if (type.isEmpty || bags <= 0) return;
+                final qty = Units.bagsToKg(bags);               // stored base unit: kg
+                final pricePerBag = double.tryParse(priceCtrl.text.trim()) ?? 0;
+                final price = pricePerBag / Units.kgPerBag;      // stored base unit: per kg
                 final supplier = supplierCtrl.text.trim().isEmpty ? null : supplierCtrl.text.trim();
 
                 if (existing == null) {
@@ -351,7 +354,7 @@ class _FeedScreenState extends State<FeedScreen> {
                         type: TransactionType.expense,
                         category: TransactionCategory.feed,
                         amount: item.totalValue,
-                        description: 'Feed stock: ${qty.toStringAsFixed(0)}kg $type',
+                        description: 'Feed stock: ${Units.bagShort(qty)} bags $type',
                       ),
                     );
                   }
@@ -385,7 +388,7 @@ class _FeedScreenState extends State<FeedScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Stock Item?'),
-        content: Text('Remove "${item.feedTypeName}" (${item.quantityKg.toStringAsFixed(0)}kg) from inventory?', style: TextStyle(color: AppColors.textSecondary)),
+        content: Text('Remove "${item.feedTypeName}" (${Units.bagShort(item.quantityKg)} bags) from inventory?', style: TextStyle(color: AppColors.textSecondary)),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
           ElevatedButton(
@@ -488,8 +491,8 @@ class _FeedScreenState extends State<FeedScreen> {
                 ),
               ] else ...[
                 HtmlFormField(
-                  label: 'Amount Consumed (kg)',
-                  child: TextField(controller: amountCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. 520')),
+                  label: 'Amount Consumed (bags — 1 bag = 50 kg)',
+                  child: TextField(controller: amountCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. 3 or 2.5')),
                 ),
                 const SizedBox(height: 12),
                 HtmlFormField(
@@ -534,8 +537,9 @@ class _FeedScreenState extends State<FeedScreen> {
                   cost = b * feed.pricePerBag; // owner's price — locked
                   type = _parseFeedType(feed.feedName);
                 } else {
-                  kg = double.tryParse(amountCtrl.text.trim()) ?? 0;
-                  if (kg <= 0) return;
+                  final b = double.tryParse(amountCtrl.text.trim()) ?? 0;
+                  if (b <= 0) return;
+                  kg = Units.bagsToKg(b);
                   cost = double.tryParse(costCtrl.text.trim()) ?? 0;
                   type = _parseFeedType(typeCtrl.text.trim());
                 }
@@ -558,7 +562,7 @@ class _FeedScreenState extends State<FeedScreen> {
                       category: TransactionCategory.feed,
                       amount: cost,
                       batchId: selectedBatch,
-                      description: 'Feed: ${kg.toStringAsFixed(0)}kg ${record.feedTypeName}',
+                      description: 'Feed: ${Units.bagShort(kg)} bags ${record.feedTypeName}',
                     ),
                   );
                 }
@@ -589,7 +593,7 @@ class _FeedScreenState extends State<FeedScreen> {
   }
 
   void _showEditDialog(BuildContext context, FeedRecord feed, FeedProvider provider) {
-    final amountCtrl = TextEditingController(text: feed.totalKg.toStringAsFixed(1));
+    final amountCtrl = TextEditingController(text: Units.bagShort(feed.totalKg));
     FeedType selectedType = feed.feedType;
 
     showDialog(
@@ -599,8 +603,8 @@ class _FeedScreenState extends State<FeedScreen> {
           title: const Text('Edit Feed Record'),
           content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
             HtmlFormField(
-              label: 'Amount (kg)',
-              child: TextField(controller: amountCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('kg')),
+              label: 'Amount (bags)',
+              child: TextField(controller: amountCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('bags')),
             ),
             const SizedBox(height: 12),
             HtmlFormField(
@@ -619,9 +623,9 @@ class _FeedScreenState extends State<FeedScreen> {
             TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
             ElevatedButton(
               onPressed: () {
-                final kg = double.tryParse(amountCtrl.text) ?? 0;
-                if (kg <= 0) return;
-                provider.updateRecord(feed.copyWith(feedType: selectedType, bagsUsed: 1, kgPerBag: kg));
+                final bags = double.tryParse(amountCtrl.text) ?? 0;
+                if (bags <= 0) return;
+                provider.updateRecord(feed.copyWith(feedType: selectedType, bagsUsed: 1, kgPerBag: Units.bagsToKg(bags)));
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Record updated ✏️'), backgroundColor: AppColors.cyan, behavior: SnackBarBehavior.floating));
               },

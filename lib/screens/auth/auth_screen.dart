@@ -9,7 +9,7 @@ enum AuthMode { signIn, signUp, confirmSignup, forgot, resetCode }
 
 /// Full-screen sign in / sign up flow for cloud sync.
 /// Everything happens in-app: account confirmation and password reset
-/// use 6-digit codes from the Hatch2Revenue email, no browser needed.
+/// use 8-digit codes from the Hatch2Revenue email, no browser needed.
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key, this.initialMode = AuthMode.signIn});
 
@@ -133,7 +133,7 @@ class _AuthScreenState extends State<AuthScreen> {
           if (!mounted) return;
           if (needsConfirm) {
             _switch(AuthMode.confirmSignup,
-                notice: 'We emailed a 6-digit code to ${_email.text.trim()}.');
+                notice: 'We emailed an 8-digit code to ${_email.text.trim()}.');
           } else {
             Navigator.pop(context, true);
           }
@@ -150,7 +150,7 @@ class _AuthScreenState extends State<AuthScreen> {
           if (mounted) {
             _switch(AuthMode.resetCode,
                 notice:
-                    'We emailed a 6-digit code to ${_email.text.trim()}. '
+                    'We emailed an 8-digit code to ${_email.text.trim()}. '
                     'Enter it below with your new password.');
           }
         });
@@ -243,7 +243,7 @@ class _AuthScreenState extends State<AuthScreen> {
         ),
       AuthMode.confirmSignup => (
           'Check your email',
-          'Enter the 6-digit code to confirm your account'
+          'Enter the 8-digit code to confirm your account'
         ),
       AuthMode.forgot => (
           'Forgot your password?',
@@ -251,7 +251,7 @@ class _AuthScreenState extends State<AuthScreen> {
         ),
       AuthMode.resetCode => (
           'Set a new password',
-          'Use the 6-digit code from the email'
+          'Use the 8-digit code from the email'
         ),
     };
 
@@ -351,7 +351,7 @@ class _AuthScreenState extends State<AuthScreen> {
     );
     final codeField = _input(
       controller: _code,
-      label: '6-Digit Code',
+      label: '8-Digit Code',
       keyboard: TextInputType.number,
       center: true,
     );

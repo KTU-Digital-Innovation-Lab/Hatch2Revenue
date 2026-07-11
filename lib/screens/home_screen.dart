@@ -12,6 +12,7 @@ import '../providers/financial_provider.dart';
 import '../providers/feed_provider.dart';
 import '../utils/app_colors.dart';
 import '../utils/currency_formatter.dart';
+import '../utils/units.dart';
 import '../app.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -100,8 +101,8 @@ class HomeScreen extends StatelessWidget {
                   color: AppColors.amber,
                 ),
                 _StatCard(
-                  label: "TODAY'S EGGS",
-                  value: '${eggProvider.todayCount}',
+                  label: "TODAY'S CRATES",
+                  value: Units.crateShort(eggProvider.todayCount),
                   color: AppColors.green,
                 ),
                 _StatCard(
@@ -167,14 +168,14 @@ class HomeScreen extends StatelessWidget {
                   icon: Icons.grass,
                   color: AppColors.green,
                   title: 'Feed Monitor',
-                  sub: feedKg > 0 ? '${feedKg.toStringAsFixed(0)}kg consumed' : 'No feed data',
+                  sub: feedKg > 0 ? '${Units.bagShort(feedKg)} bags consumed' : 'No feed data',
                   onTap: () => MainNavigation.navigateTo(context, 3),
                 ),
                 _NavCard(
                   icon: Icons.egg_outlined,
                   color: AppColors.cyan,
                   title: 'Egg Production',
-                  sub: '${eggProvider.totalEggs} total eggs',
+                  sub: '${Units.crateShort(eggProvider.totalEggs)} total crates',
                   onTap: () => MainNavigation.navigateTo(context, 4),
                 ),
                 _NavCard(
@@ -275,7 +276,7 @@ class _IntelligencePanel extends StatelessWidget {
               const Spacer(),
               if (forecast > 0)
                 Text(
-                  '~$forecast eggs next 7 days',
+                  '~${Units.crateShort(forecast)} crates next 7 days',
                   style: GoogleFonts.inter(
                     color: AppColors.green,
                     fontSize: 11,

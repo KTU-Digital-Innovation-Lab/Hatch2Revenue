@@ -3,6 +3,7 @@ import '../providers/egg_production_provider.dart';
 import '../providers/feed_provider.dart';
 import '../providers/mortality_provider.dart';
 import '../providers/vaccination_provider.dart';
+import '../utils/units.dart';
 
 enum InsightLevel { good, info, watch, warn, critical }
 
@@ -67,7 +68,7 @@ class InsightsEngine {
       final dev = (feedToday - expected) / expected * 100;
       if (dev > 15) {
         out.add(Insight(InsightLevel.watch, 'Feed use ${dev.toStringAsFixed(0)}% above expected',
-            'Today\'s ${feedToday.toStringAsFixed(0)} kg vs ~${expected.toStringAsFixed(0)} kg expected. Check for spillage or waste.'));
+            'Today\'s ${Units.bagShort(feedToday)} bags vs ~${Units.bagShort(expected)} bags expected. Check for spillage or waste.'));
       } else if (dev < -20) {
         out.add(const Insight(InsightLevel.watch, 'Feed use below expected',
             'Under-feeding cuts production fast. Confirm every session was recorded.'));

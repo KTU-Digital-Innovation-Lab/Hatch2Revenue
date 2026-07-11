@@ -12,6 +12,7 @@ import '../../providers/quick_action_provider.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/currency_formatter.dart';
 import '../../utils/html_widgets.dart';
+import '../../utils/units.dart';
 
 class EggProductionScreen extends StatelessWidget {
   const EggProductionScreen({super.key});
@@ -50,13 +51,13 @@ class EggProductionScreen extends StatelessWidget {
             children: [
               SectionHeader(
                 title: '🥚 Egg Production Tracker',
-                subtitle: 'Log daily tallies, damaged eggs, and Hen-Day Production %',
+                subtitle: 'Production is tracked in crates (30 eggs = 1 crate)',
                 action: PrimaryBtn(label: '+ Log Today\'s Eggs', onPressed: () => _showAddDialog(context)),
               ),
 
               KpiGrid(children: [
-                KpiCard(label: 'Total Eggs', value: '$total', accentColor: AppColors.green),
-                KpiCard(label: 'Damaged', value: '$damaged', accentColor: AppColors.red),
+                KpiCard(label: 'Total Crates', value: Units.crateShort(total), sub: Units.crateLabel(total), accentColor: AppColors.green),
+                KpiCard(label: 'Damaged (eggs)', value: '$damaged', accentColor: AppColors.red),
                 KpiCard(label: 'HD% (latest)', value: latestHd, accentColor: AppColors.amber),
                 KpiCard(label: 'Days Logged', value: '${logs.length}', accentColor: AppColors.cyan),
               ]),
@@ -143,7 +144,8 @@ class EggProductionScreen extends StatelessWidget {
           bg = AppColors.amber.withValues(alpha: 0.10); fg = AppColors.amber; border = AppColors.amber.withValues(alpha: 0.18);
       }
       final dayLabel = '${e.date.month}/${e.date.day}';
-      final numLabel = e.eggCount >= 1000 ? '${(e.eggCount / 1000).toStringAsFixed(1)}k' : '${e.eggCount}';
+      // Cells read in crates to match the rest of the screen.
+      final numLabel = Units.crateShort(e.eggCount);
       cells.add(_eggCell(dayLabel, numLabel, bg, fg, border));
     }
 
@@ -175,13 +177,13 @@ class EggProductionScreen extends StatelessWidget {
   Widget _logsTable(BuildContext context, List<EggProduction> logs, EggProductionProvider provider, double Function(int) hdPct) {
     final sorted = [...logs]..sort((a, b) => b.date.compareTo(a.date));
     return HtmlTable(
-      headers: ['Date', 'Batch', 'Time', 'Total', 'Good', 'Damaged', 'HD%', ''],
+      headers: ['Date', 'Batch', 'Time', 'Crates', 'Good', 'Damaged', 'HD%', ''],
       rows: sorted.map((e) => [
         Text(DateFormat('d MMM yyyy').format(e.date), style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
         Text(e.batchId, style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11)),
         Text(e.period ?? '—', style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
-        Text('${e.eggCount}', style: GoogleFonts.inter(color: AppColors.green, fontWeight: FontWeight.w500, fontSize: 12)),
-        Text('${e.goodCount}', style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11)),
+        Text(Units.crateLabel(e.eggCount), style: GoogleFonts.inter(color: AppColors.green, fontWeight: FontWeight.w500, fontSize: 12)),
+        Text(Units.crateLabel(e.goodCount), style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11)),
         Text('${e.damagedCount}', style: GoogleFonts.inter(color: e.damagedCount > 0 ? AppColors.red : AppColors.textSecondary, fontSize: 11)),
         Text('${hdPct(e.eggCount).toStringAsFixed(1)}%', style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11)),
         Row(mainAxisSize: MainAxisSize.min, children: [
@@ -193,7 +195,8 @@ class EggProductionScreen extends StatelessWidget {
   }
 
   void _showAddDialog(BuildContext context) {
-    final totalCtrl   = TextEditingController();
+    final cratesCtrl  = TextEditingController();
+    final looseCtrl   = TextEditingController();
     final damagedCtrl = TextEditingController();
     final priceCtrl   = TextEditingController();
     final notesCtrl   = TextEditingController();
@@ -220,7 +223,10 @@ class EggProductionScreen extends StatelessWidget {
         final birds = selectedBatch == 'All'
             ? bp.totalBirds
             : (bp.getBatchByRef(selectedBatch)?.currentCount ?? 0);
-        final typedCount = int.tryParse(totalCtrl.text.trim()) ?? 0;
+        final typedCrates = double.tryParse(cratesCtrl.text.trim()) ?? 0;
+        final typedLoose = int.tryParse(looseCtrl.text.trim()) ?? 0;
+        final typedCount =
+            (typedCrates * Units.eggsPerCrate).round() + typedLoose;
         final prodRate = birds > 0 ? typedCount / birds * 100 : 0.0;
         return AlertDialog(
         title: const Text('🥚 Log Egg Production'),
@@ -274,10 +280,28 @@ class EggProductionScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            HtmlFormField(
-              label: 'Total Eggs Collected',
-              child: TextField(controller: totalCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. 3600'), onChanged: (_) => ss(() {})),
-            ),
+            Row(children: [
+              Expanded(
+                child: HtmlFormField(
+                  label: 'Crates Collected',
+                  child: TextField(controller: cratesCtrl, keyboardType: const TextInputType.numberWithOptions(decimal: true), style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. 120'), onChanged: (_) => ss(() {})),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: HtmlFormField(
+                  label: 'Loose Eggs',
+                  child: TextField(controller: looseCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('0–29'), onChanged: (_) => ss(() {})),
+                ),
+              ),
+            ]),
+            const SizedBox(height: 6),
+            if (typedCount > 0)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text('= ${Units.crateLabel(typedCount)}  ($typedCount eggs)',
+                    style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+              ),
             const SizedBox(height: 12),
             HtmlFormField(
               label: 'Damaged / Cracked Eggs',
@@ -285,8 +309,8 @@ class EggProductionScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             HtmlFormField(
-              label: 'Price per Egg (${CurrencyFormatter.currencySymbol}) — optional',
-              child: TextField(controller: priceCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Sale value auto-logged as income')),
+              label: 'Price per Crate (${CurrencyFormatter.currencySymbol}) — optional',
+              child: TextField(controller: priceCtrl, keyboardType: const TextInputType.numberWithOptions(decimal: true), style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Sale value auto-logged as income')),
             ),
             const SizedBox(height: 12),
             if (birds > 0 && typedCount > 0)
@@ -308,10 +332,15 @@ class EggProductionScreen extends StatelessWidget {
           TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
           ElevatedButton(
             onPressed: () {
-              final count   = int.tryParse(totalCtrl.text.trim()) ?? 0;
+              final crates = double.tryParse(cratesCtrl.text.trim()) ?? 0;
+              final loose  = int.tryParse(looseCtrl.text.trim()) ?? 0;
+              final count  = (crates * Units.eggsPerCrate).round() + loose;
               if (count <= 0) return;
               final damaged = int.tryParse(damagedCtrl.text.trim()) ?? 0;
-              final price   = double.tryParse(priceCtrl.text.trim()) ?? 0;
+              // Price entered per crate; store per egg so revenue math
+              // (count × pricePerEgg) stays correct.
+              final pricePerCrate = double.tryParse(priceCtrl.text.trim()) ?? 0;
+              final price = pricePerCrate / Units.eggsPerCrate;
               context.read<EggProductionProvider>().addRecord(EggProduction(
                 batchId: selectedBatch,
                 date: DateTime.now(),
@@ -331,7 +360,7 @@ class EggProductionScreen extends StatelessWidget {
                     type: TransactionType.income,
                     category: TransactionCategory.eggSales,
                     amount: saleValue,
-                    description: 'Egg sales: ${count - damaged} eggs @ ${CurrencyFormatter.currencySymbol}$price',
+                    description: 'Egg sales: ${Units.crateLabel(count - damaged)} @ ${CurrencyFormatter.currencySymbol}${pricePerCrate.toStringAsFixed(0)}/crate',
                   ),
                 );
               }
@@ -355,7 +384,8 @@ class EggProductionScreen extends StatelessWidget {
   }
 
   void _showEditDialog(BuildContext context, EggProduction egg, EggProductionProvider provider) {
-    final countCtrl   = TextEditingController(text: '${egg.eggCount}');
+    final cratesCtrl  = TextEditingController(text: '${egg.eggCount ~/ Units.eggsPerCrate}');
+    final looseCtrl   = TextEditingController(text: '${egg.eggCount % Units.eggsPerCrate}');
     final damagedCtrl = TextEditingController(text: '${egg.damagedCount}');
 
     showDialog(
@@ -363,15 +393,21 @@ class EggProductionScreen extends StatelessWidget {
       builder: (ctx) => AlertDialog(
         title: const Text('Edit Egg Record'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          HtmlFormField(label: 'Number of Eggs', child: TextField(controller: countCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Total eggs'))),
+          Row(children: [
+            Expanded(child: HtmlFormField(label: 'Crates Collected', child: TextField(controller: cratesCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Crates')))),
+            const SizedBox(width: 12),
+            Expanded(child: HtmlFormField(label: 'Loose Eggs', child: TextField(controller: looseCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('0–29')))),
+          ]),
           const SizedBox(height: 12),
-          HtmlFormField(label: 'Damaged / Cracked', child: TextField(controller: damagedCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Damaged count'))),
+          HtmlFormField(label: 'Damaged / Cracked (eggs)', child: TextField(controller: damagedCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Damaged count'))),
         ])),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
           ElevatedButton(
             onPressed: () {
-              final count   = int.tryParse(countCtrl.text) ?? 0;
+              final crates  = int.tryParse(cratesCtrl.text) ?? 0;
+              final loose   = int.tryParse(looseCtrl.text) ?? 0;
+              final count   = crates * Units.eggsPerCrate + loose;
               final damaged = int.tryParse(damagedCtrl.text) ?? 0;
               if (count <= 0) return;
               provider.updateRecord(egg.copyWith(eggCount: count, damagedCount: damaged));

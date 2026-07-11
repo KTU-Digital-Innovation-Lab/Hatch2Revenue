@@ -9,6 +9,7 @@ import '../../providers/mortality_provider.dart';
 import '../../providers/vaccination_provider.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/currency_formatter.dart';
+import '../../utils/units.dart';
 
 /// A batch's command center — lifecycle timeline plus KPIs aggregated
 /// from every module (eggs, feed, mortality, vaccination), the way
@@ -94,8 +95,8 @@ class BatchDetailScreen extends StatelessWidget {
               _kpi('Mortality Rate',
                   '${batch.mortalityRate.toStringAsFixed(1)}%', AppColors.red),
               _kpi('Birds Lost', '$batchDeaths', AppColors.red),
-              _kpi('Total Eggs', '$totalEggs', AppColors.amber),
-              _kpi('Feed Used', '${feedKg.toStringAsFixed(0)} kg', AppColors.cyan),
+              _kpi('Total Crates', Units.crateShort(totalEggs), AppColors.amber),
+              _kpi('Feed Used', '${Units.bagShort(feedKg)} bags', AppColors.cyan),
               _kpi('Feed Cost',
                   '${CurrencyFormatter.currencySymbol}${feedCost.toStringAsFixed(0)}',
                   AppColors.cyan),

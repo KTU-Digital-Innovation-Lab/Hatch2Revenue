@@ -173,7 +173,7 @@ class SyncService extends ChangeNotifier {
     return false;
   }
 
-  /// Confirms a new account with the 6-digit code from the
+  /// Confirms a new account with the 8-digit code from the
   /// Hatch2Revenue email, signing the user in.
   Future<void> verifySignupCode(String email, String code) async {
     _requireSupabase();
@@ -194,7 +194,7 @@ class SyncService extends ChangeNotifier {
     );
   }
 
-  /// Emails a 6-digit recovery code.
+  /// Emails a 8-digit recovery code.
   Future<void> requestPasswordReset(String email) async {
     _requireSupabase();
     await Supabase.instance.client.auth.resetPasswordForEmail(email);
