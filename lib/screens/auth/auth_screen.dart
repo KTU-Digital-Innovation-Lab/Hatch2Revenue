@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import '../../providers/farm_profile_provider.dart';
 import '../../services/sync_service.dart';
 import '../../utils/app_colors.dart';
 
@@ -20,6 +21,8 @@ class AuthScreen extends StatefulWidget {
 
 class _AuthScreenState extends State<AuthScreen> {
   late AuthMode _mode = widget.initialMode;
+  final _fullName = TextEditingController();
+  final _phone = TextEditingController();
   final _email = TextEditingController();
   final _password = TextEditingController();
   final _confirmPassword = TextEditingController();
@@ -31,6 +34,8 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   void dispose() {
+    _fullName.dispose();
+    _phone.dispose();
     _email.dispose();
     _password.dispose();
     _confirmPassword.dispose();
@@ -98,6 +103,9 @@ class _AuthScreenState extends State<AuthScreen> {
           if (mounted) Navigator.pop(context, true);
         });
       case AuthMode.signUp:
+        if (_fullName.text.trim().isEmpty) {
+          return setState(() => _error = 'Enter your full name.');
+        }
         if (!_validEmail()) return setState(() => _error = 'Enter a valid email.');
         if (_password.text.length < 8) {
           return setState(() => _error = 'Password must be at least 8 characters.');
@@ -105,9 +113,23 @@ class _AuthScreenState extends State<AuthScreen> {
         if (_password.text != _confirmPassword.text) {
           return setState(() => _error = 'Passwords do not match.');
         }
+        // Seed the local farm profile with the owner's details.
+        final profileProvider = context.read<FarmProfileProvider>();
+        final existing = profileProvider.profile;
+        profileProvider.save(existing.copyWith(
+          ownerName: existing.ownerName.isEmpty
+              ? _fullName.text.trim()
+              : existing.ownerName,
+          phone: existing.phone.isEmpty ? _phone.text.trim() : existing.phone,
+          email: existing.email.isEmpty ? _email.text.trim() : existing.email,
+        ));
         await _run(() async {
-          final needsConfirm =
-              await sync.signUp(_email.text.trim(), _password.text);
+          final needsConfirm = await sync.signUp(
+            _email.text.trim(),
+            _password.text,
+            fullName: _fullName.text.trim(),
+            phone: _phone.text.trim(),
+          );
           if (!mounted) return;
           if (needsConfirm) {
             _switch(AuthMode.confirmSignup,
@@ -356,6 +378,18 @@ class _AuthScreenState extends State<AuthScreen> {
         ];
       case AuthMode.signUp:
         return [
+          _input(
+            controller: _fullName,
+            label: 'Full Name',
+            keyboard: TextInputType.name,
+          ),
+          const SizedBox(height: 12),
+          _input(
+            controller: _phone,
+            label: 'Phone Number (optional)',
+            keyboard: TextInputType.phone,
+          ),
+          const SizedBox(height: 12),
           emailField,
           const SizedBox(height: 12),
           passwordField,

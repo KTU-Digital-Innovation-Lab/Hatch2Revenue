@@ -21,6 +21,7 @@ import 'screens/mortality/mortality_screen.dart';
 import 'screens/financial/financial_screen.dart';
 import 'screens/farm_profile/farm_profile_screen.dart';
 import 'screens/analytics/analytics_screen.dart';
+import 'screens/splash_screen.dart';
 import 'utils/app_colors.dart';
 import 'utils/app_feedback.dart';
 
@@ -53,7 +54,9 @@ class PoultryApp extends StatelessWidget {
             scaffoldMessengerKey: scaffoldMessengerKey,
             debugShowCheckedModeBanner: false,
             theme: _buildTheme(dark),
-            home: const MainNavigation(),
+            home: SplashScreen.completed
+                ? const MainNavigation()
+                : const SplashScreen(),
           );
         },
       ),
@@ -364,8 +367,10 @@ class _MainNavigationState extends State<MainNavigation> {
                               color: AppColors.amber.withValues(alpha: 0.3),
                             ),
                           ),
-                          child: const Center(
-                            child: Text('🐓', style: TextStyle(fontSize: 18)),
+                          padding: const EdgeInsets.all(4),
+                          child: Image.asset(
+                            'assets/chicken.png',
+                            fit: BoxFit.contain,
                           ),
                         ),
                         const SizedBox(width: 10),

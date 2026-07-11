@@ -24,8 +24,11 @@ class FarmProfileScreen extends StatefulWidget {
 class _FarmProfileScreenState extends State<FarmProfileScreen> {
   final _farmNameController = TextEditingController();
   final _ownerNameController = TextEditingController();
-  final _locationController = TextEditingController();
+  final _farmTypeController = TextEditingController();
   final _farmSizeController = TextEditingController();
+  final _countryController = TextEditingController();
+  final _regionController = TextEditingController();
+  final _locationController = TextEditingController();
   final _phoneController = TextEditingController();
   final _emailController = TextEditingController();
   bool _loaded = false;
@@ -38,8 +41,11 @@ class _FarmProfileScreenState extends State<FarmProfileScreen> {
       final profile = context.read<FarmProfileProvider>().profile;
       _farmNameController.text = profile.farmName;
       _ownerNameController.text = profile.ownerName;
-      _locationController.text = profile.location;
+      _farmTypeController.text = profile.farmType;
       _farmSizeController.text = profile.farmSize;
+      _countryController.text = profile.country;
+      _regionController.text = profile.region;
+      _locationController.text = profile.location;
       _phoneController.text = profile.phone;
       _emailController.text = profile.email;
     }
@@ -49,8 +55,11 @@ class _FarmProfileScreenState extends State<FarmProfileScreen> {
   void dispose() {
     _farmNameController.dispose();
     _ownerNameController.dispose();
-    _locationController.dispose();
+    _farmTypeController.dispose();
     _farmSizeController.dispose();
+    _countryController.dispose();
+    _regionController.dispose();
+    _locationController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
     super.dispose();
@@ -74,10 +83,13 @@ class _FarmProfileScreenState extends State<FarmProfileScreen> {
     final profile = FarmProfile(
       farmName: farmName,
       ownerName: ownerName,
+      farmType: _farmTypeController.text.trim(),
+      farmSize: _farmSizeController.text.trim(),
+      country: _countryController.text.trim(),
+      region: _regionController.text.trim(),
       location: _locationController.text.trim(),
       phone: _phoneController.text.trim(),
       email: _emailController.text.trim(),
-      farmSize: _farmSizeController.text.trim(),
     );
 
     context.read<FarmProfileProvider>().save(profile);
@@ -293,16 +305,46 @@ class _FarmProfileScreenState extends State<FarmProfileScreen> {
                   decoration: _inputDecoration('Owner Name *'),
                 ),
                 const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _farmTypeController,
+                      style: TextStyle(color: AppColors.textPrimary),
+                      decoration: _inputDecoration('Farm Type'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _farmSizeController,
+                      style: TextStyle(color: AppColors.textPrimary),
+                      decoration: _inputDecoration('Farm Size'),
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: 12),
+                Row(children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _countryController,
+                      style: TextStyle(color: AppColors.textPrimary),
+                      decoration: _inputDecoration('Country'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _regionController,
+                      style: TextStyle(color: AppColors.textPrimary),
+                      decoration: _inputDecoration('Region'),
+                    ),
+                  ),
+                ]),
+                const SizedBox(height: 12),
                 TextField(
                   controller: _locationController,
                   style: TextStyle(color: AppColors.textPrimary),
                   decoration: _inputDecoration('Location / Address'),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _farmSizeController,
-                  style: TextStyle(color: AppColors.textPrimary),
-                  decoration: _inputDecoration('Farm Size'),
                 ),
               ],
             ),

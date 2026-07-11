@@ -152,11 +152,20 @@ class SyncService extends ChangeNotifier {
   }
 
   /// Returns true when the account needs email confirmation first.
-  Future<bool> signUp(String email, String password) async {
+  Future<bool> signUp(
+    String email,
+    String password, {
+    String? fullName,
+    String? phone,
+  }) async {
     _requireSupabase();
     final res = await Supabase.instance.client.auth.signUp(
       email: email,
       password: password,
+      data: {
+        if (fullName != null && fullName.isNotEmpty) 'full_name': fullName,
+        if (phone != null && phone.isNotEmpty) 'phone': phone,
+      },
     );
     if (res.session == null) return true; // confirm-email flow
     await _backfillIfFirstSignIn();
