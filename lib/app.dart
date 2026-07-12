@@ -234,7 +234,7 @@ class _MainNavigationState extends State<MainNavigation> {
 
   final List<IconData> _icons = const [
     Icons.space_dashboard_outlined,
-    Icons.pets,
+    Icons.egg_alt, // Batch Lifecycle — overridden by the hen glyph in the tile
     Icons.vaccines_outlined,
     Icons.grass,
     Icons.egg_outlined,

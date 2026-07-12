@@ -124,6 +124,7 @@ class SectionHeader extends StatelessWidget {
   final String? subtitle;
   final Widget? action;
   final IconData? icon;
+  final ImageProvider? iconImage;
 
   const SectionHeader({
     super.key,
@@ -131,6 +132,7 @@ class SectionHeader extends StatelessWidget {
     this.subtitle,
     this.action,
     this.icon,
+    this.iconImage,
   });
 
   @override
@@ -142,7 +144,10 @@ class SectionHeader extends StatelessWidget {
         children: [
           Row(
             children: [
-              if (icon != null) ...[
+              if (iconImage != null) ...[
+                ImageIcon(iconImage, color: AppColors.amber, size: 22),
+                const SizedBox(width: 8),
+              ] else if (icon != null) ...[
                 Icon(icon, color: AppColors.amber, size: 22),
                 const SizedBox(width: 8),
               ],
@@ -354,15 +359,17 @@ class CauseBarRow extends StatelessWidget {
 
 // ─── EMPTY STATE (like HTML .empty-state) ────────────────────────────────────
 class HtmlEmptyState extends StatelessWidget {
-  final IconData icon;
+  final IconData? icon;
   final String message;
   final Widget? action;
+  final ImageProvider? iconImage;
 
   const HtmlEmptyState({
     super.key,
-    required this.icon,
+    this.icon,
     required this.message,
     this.action,
+    this.iconImage,
   });
 
   @override
@@ -373,7 +380,10 @@ class HtmlEmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 40, color: AppColors.textMuted),
+            if (iconImage != null)
+              ImageIcon(iconImage, size: 40, color: AppColors.textMuted)
+            else if (icon != null)
+              Icon(icon, size: 40, color: AppColors.textMuted),
             const SizedBox(height: 12),
             Text(
               message,

@@ -151,7 +151,6 @@ class HomeScreen extends StatelessWidget {
               childAspectRatio: 1.05,
               children: [
                 _NavCard(
-                  icon: Icons.pets,
                   iconImage: const AssetImage('assets/hen_glyph.png'),
                   color: AppColors.amber,
                   title: 'Batch Lifecycle',
@@ -521,7 +520,7 @@ class _StatCard extends StatelessWidget {
 }
 
 class _NavCard extends StatelessWidget {
-  final IconData icon;
+  final IconData? icon;
   final Color color;
   final String title;
   final String sub;
@@ -529,7 +528,7 @@ class _NavCard extends StatelessWidget {
   final ImageProvider? iconImage;
 
   const _NavCard({
-    required this.icon,
+    this.icon,
     required this.color,
     required this.title,
     required this.sub,

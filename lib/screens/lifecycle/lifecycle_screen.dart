@@ -47,7 +47,7 @@ class LifecycleScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SectionHeader(
-                icon: Icons.pets,
+                iconImage: const AssetImage('assets/hen_glyph.png'),
                 title: 'Batch Lifecycle Tracker',
                 subtitle: 'Track breed info, entry dates, age in weeks, and stage transitions',
                 action: PrimaryBtn(
@@ -73,7 +73,7 @@ class LifecycleScreen extends StatelessWidget {
                 bodyPadding: EdgeInsets.zero,
                 body: batches.isEmpty
                     ? HtmlEmptyState(
-                        icon: Icons.pets,
+                        iconImage: const AssetImage('assets/hen_glyph.png'),
                         message: 'No batches yet. Add your first batch.',
                         action: PrimaryBtn(label: '+ Add Batch', small: true, onPressed: () => _showAddDialog(context, batchProvider)),
                       )
