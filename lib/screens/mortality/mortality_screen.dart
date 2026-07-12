@@ -45,7 +45,8 @@ class MortalityScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SectionHeader(
-                title: '⚠️ Mortality & Health Log',
+                icon: Icons.monitor_heart_outlined,
+                title: 'Mortality & Health Log',
                 subtitle: 'Record deaths with cause-of-death tags and survival analytics',
                 action: PrimaryBtn(label: '+ Log Deaths', onPressed: () => _showAddDialog(context)),
               ),
@@ -62,9 +63,9 @@ class MortalityScreen extends StatelessWidget {
 
               _twoCol(
                 left: HtmlCard(
-                  header: const HtmlCardHeader(title: '📊 Cause of Death Breakdown'),
+                  header: const HtmlCardHeader(icon: Icons.pie_chart_outline, title: 'Cause of Death Breakdown'),
                   body: sortedCauses.isEmpty
-                      ? const HtmlEmptyState(icon: '📊', message: 'Log deaths to see breakdown.')
+                      ? const HtmlEmptyState(icon: Icons.pie_chart_outline, message: 'Log deaths to see breakdown.')
                       : Column(
                           children: sortedCauses.asMap().entries.map((e) {
                             final pct = totalDeaths > 0
@@ -80,11 +81,11 @@ class MortalityScreen extends StatelessWidget {
                         ),
                 ),
                 right: HtmlCard(
-                  header: const HtmlCardHeader(title: '📋 Death Records'),
+                  header: const HtmlCardHeader(icon: Icons.list_alt_outlined, title: 'Death Records'),
                   bodyPadding: EdgeInsets.zero,
                   body: logs.isEmpty
                       ? HtmlEmptyState(
-                          icon: '⚠️',
+                          icon: Icons.monitor_heart_outlined,
                           message: 'No mortality records yet.',
                           action: PrimaryBtn(label: '+ Log Deaths', small: true, onPressed: () => _showAddDialog(context)),
                         )
@@ -182,7 +183,7 @@ class MortalityScreen extends StatelessWidget {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, ss) => AlertDialog(
-          title: const Text('⚠️ Log Mortality'),
+          title: const Text('Log Mortality'),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               HtmlFormField(label: 'Date', child: HtmlDateTile(date: DateTime.now())),
@@ -245,7 +246,7 @@ class MortalityScreen extends StatelessWidget {
                 context.read<BatchProvider>().adjustCount(selectedBatch, -count);
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: const Text('Mortality logged ✓ — bird count updated'),
+                  content: const Text('Mortality logged — bird count updated'),
                   backgroundColor: AppColors.green.withValues(alpha: 0.9),
                   behavior: SnackBarBehavior.floating,
                 ));
@@ -296,7 +297,7 @@ class MortalityScreen extends StatelessWidget {
                 // Apply the difference to the batch's live count
                 context.read<BatchProvider>().adjustCount(mort.batchId, mort.count - count);
                 Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Record updated ✏️'), backgroundColor: AppColors.cyan, behavior: SnackBarBehavior.floating));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Record updated'), backgroundColor: AppColors.cyan, behavior: SnackBarBehavior.floating));
               },
               child: const Text('Save Changes'),
             ),

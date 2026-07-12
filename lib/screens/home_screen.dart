@@ -151,7 +151,7 @@ class HomeScreen extends StatelessWidget {
               childAspectRatio: 1.05,
               children: [
                 _NavCard(
-                  icon: Icons.timeline,
+                  icon: Icons.pets,
                   color: AppColors.amber,
                   title: 'Batch Lifecycle',
                   sub: '${batchProvider.batches.length} active batch${batchProvider.batches.length != 1 ? "es" : ""}',

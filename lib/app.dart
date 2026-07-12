@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -181,6 +182,9 @@ class _MainNavigationState extends State<MainNavigation> {
   // stays on the same screen.
   static int _lastIndex = 0;
   int _currentIndex = _lastIndex;
+  // Tabs the user came from, so the system back button returns to the
+  // previous screen instead of exiting the app.
+  final List<int> _history = [];
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
@@ -230,7 +234,7 @@ class _MainNavigationState extends State<MainNavigation> {
 
   final List<IconData> _icons = const [
     Icons.space_dashboard_outlined,
-    Icons.timeline,
+    Icons.pets,
     Icons.vaccines_outlined,
     Icons.grass,
     Icons.egg_outlined,
@@ -261,15 +265,45 @@ class _MainNavigationState extends State<MainNavigation> {
     if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
       Navigator.of(context).pop();
     }
+    if (index == _currentIndex) return;
     setState(() {
+      _history.add(_currentIndex);
       _currentIndex = index;
       _lastIndex = index;
     });
   }
 
+  /// System back: close the drawer, else step back through visited tabs,
+  /// else fall back to the dashboard, and only exit the app from there.
+  void _handleBack() {
+    if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
+      _scaffoldKey.currentState?.closeDrawer();
+      return;
+    }
+    if (_history.isNotEmpty) {
+      setState(() {
+        _currentIndex = _history.removeLast();
+        _lastIndex = _currentIndex;
+      });
+    } else if (_currentIndex != 0) {
+      setState(() {
+        _currentIndex = 0;
+        _lastIndex = 0;
+      });
+    } else {
+      SystemNavigator.pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _handleBack();
+      },
+      child: Scaffold(
       key: _scaffoldKey,
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -326,6 +360,7 @@ class _MainNavigationState extends State<MainNavigation> {
         index: _currentIndex,
         children: _screens,
       ),
+    ),
     );
   }
 

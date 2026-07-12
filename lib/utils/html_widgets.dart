@@ -123,12 +123,14 @@ class SectionHeader extends StatelessWidget {
   final String title;
   final String? subtitle;
   final Widget? action;
+  final IconData? icon;
 
   const SectionHeader({
     super.key,
     required this.title,
     this.subtitle,
     this.action,
+    this.icon,
   });
 
   @override
@@ -138,13 +140,23 @@ class SectionHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: GoogleFonts.poppins(
-              color: AppColors.textPrimary,
-              fontSize: 20,
-              fontWeight: FontWeight.w800,
-            ),
+          Row(
+            children: [
+              if (icon != null) ...[
+                Icon(icon, color: AppColors.amber, size: 22),
+                const SizedBox(width: 8),
+              ],
+              Expanded(
+                child: Text(
+                  title,
+                  style: GoogleFonts.poppins(
+                    color: AppColors.textPrimary,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
           ),
           if (subtitle != null)
             Padding(
@@ -208,8 +220,9 @@ class HtmlCard extends StatelessWidget {
 class HtmlCardHeader extends StatelessWidget {
   final String title;
   final Widget? trailing;
+  final IconData? icon;
 
-  const HtmlCardHeader({super.key, required this.title, this.trailing});
+  const HtmlCardHeader({super.key, required this.title, this.trailing, this.icon});
 
   @override
   Widget build(BuildContext context) {
@@ -220,6 +233,10 @@ class HtmlCardHeader extends StatelessWidget {
       ),
       child: Row(
         children: [
+          if (icon != null) ...[
+            Icon(icon, color: AppColors.textSecondary, size: 16),
+            const SizedBox(width: 8),
+          ],
           Expanded(
             child: Text(
               title,
@@ -337,7 +354,7 @@ class CauseBarRow extends StatelessWidget {
 
 // ─── EMPTY STATE (like HTML .empty-state) ────────────────────────────────────
 class HtmlEmptyState extends StatelessWidget {
-  final String icon;
+  final IconData icon;
   final String message;
   final Widget? action;
 
@@ -356,7 +373,7 @@ class HtmlEmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(icon, style: const TextStyle(fontSize: 40)),
+            Icon(icon, size: 40, color: AppColors.textMuted),
             const SizedBox(height: 12),
             Text(
               message,

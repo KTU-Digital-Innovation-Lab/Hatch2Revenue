@@ -55,7 +55,8 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SectionHeader(
-                title: '💉 Vaccination Scheduler',
+                icon: Icons.vaccines_outlined,
+                title: 'Vaccination Scheduler',
                 subtitle: 'Schedule vaccines, log completions, and receive alerts',
                 action: PrimaryBtn(label: '+ Schedule Vaccine', onPressed: () => _showAddDialog(context)),
               ),
@@ -99,7 +100,11 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('📅 Vaccination Schedule', style: GoogleFonts.poppins(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w700)),
+                      Row(children: [
+                        Icon(Icons.calendar_month_outlined, color: AppColors.textSecondary, size: 16),
+                        const SizedBox(width: 8),
+                        Text('Vaccination Schedule', style: GoogleFonts.poppins(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w700)),
+                      ]),
                       const SizedBox(height: 8),
                       Row(children: [
                         _filterBtn('All', 'all'),
@@ -128,12 +133,12 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
 
               // Audit trail
               HtmlCard(
-                header: const HtmlCardHeader(title: '📜 Audit Trail — Completed Logs'),
+                header: const HtmlCardHeader(icon: Icons.history, title: 'Audit Trail — Completed Logs'),
                 bodyPadding: EdgeInsets.zero,
                 body: done.isEmpty
                     ? const Padding(
                         padding: EdgeInsets.all(16),
-                        child: HtmlEmptyState(icon: '📋', message: 'No completed vaccines yet.'),
+                        child: HtmlEmptyState(icon: Icons.vaccines_outlined, message: 'No completed vaccines yet.'),
                       )
                     : _auditTable(done),
               ),
@@ -209,7 +214,7 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
           if (status != 'done') ...[
             const SizedBox(width: 8),
             GhostBtn(
-              label: '✓ Done',
+              label: 'Mark Done',
               small: true,
               onPressed: () {
                 provider.markAsCompleted(v.id);
@@ -259,7 +264,7 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, ss) => AlertDialog(
-          title: const Text('💉 Schedule Vaccine'),
+          title: const Text('Schedule Vaccine'),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               HtmlFormField(
@@ -354,7 +359,7 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
                   if (reminder.isAfter(DateTime.now())) {
                     NotificationService().scheduleNotification(
                       id: vacc.id.hashCode.abs(),
-                      title: '💉 Vaccination Reminder',
+                      title: 'Vaccination Reminder',
                       body: '${vacc.vaccineName} is due tomorrow!',
                       scheduledDate: reminder,
                     );
@@ -362,7 +367,7 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
                 }
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: const Text('Vaccine scheduled ✓'),
+                  content: const Text('Vaccine scheduled'),
                   backgroundColor: AppColors.green.withValues(alpha: 0.9),
                   behavior: SnackBarBehavior.floating,
                 ));
@@ -487,7 +492,7 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
                   if (reminder.isAfter(DateTime.now())) {
                     NotificationService().scheduleNotification(
                       id: updated.id.hashCode.abs(),
-                      title: '💉 Vaccination Reminder',
+                      title: 'Vaccination Reminder',
                       body: '${updated.vaccineName} is due tomorrow!',
                       scheduledDate: reminder,
                     );
@@ -496,7 +501,7 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
 
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content: Text('Vaccine updated ✏️'),
+                  content: Text('Vaccine updated'),
                   backgroundColor: AppColors.cyan,
                   behavior: SnackBarBehavior.floating,
                 ));

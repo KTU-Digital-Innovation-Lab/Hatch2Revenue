@@ -24,7 +24,7 @@ class AnalyticsScreen extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Text('📊', style: TextStyle(fontSize: 32)),
+              Icon(Icons.insights, color: AppColors.amber, size: 30),
               const SizedBox(width: 12),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -40,13 +40,13 @@ class AnalyticsScreen extends StatelessWidget {
           const SizedBox(height: 16),
           _buildKpiGrid(context),
           const SizedBox(height: 16),
-          _ChartCard(title: '7-Day Egg Forecast', emoji: '🔮', child: _ForecastCard()),
+          _ChartCard(title: '7-Day Egg Forecast', icon: Icons.online_prediction, child: _ForecastCard()),
           const SizedBox(height: 16),
-          _ChartCard(title: 'Egg Production — Crates (Last 10)', emoji: '🥚', child: _EggProductionChart()),
+          _ChartCard(title: 'Egg Production — Crates (Last 10)', icon: Icons.egg_outlined, child: _EggProductionChart()),
           const SizedBox(height: 16),
-          _ChartCard(title: 'Financial Breakdown', emoji: '💰', child: _FinancialPieChart()),
+          _ChartCard(title: 'Financial Breakdown', icon: Icons.account_balance_wallet_outlined, child: _FinancialPieChart()),
           const SizedBox(height: 16),
-          _ChartCard(title: 'Mortality by Cause', emoji: '⚠️', child: _MortalityPieChart()),
+          _ChartCard(title: 'Mortality by Cause', icon: Icons.warning_amber_rounded, child: _MortalityPieChart()),
           const SizedBox(height: 80),
         ],
       ),
@@ -191,9 +191,9 @@ class _MiniStat extends StatelessWidget {
 
 class _ChartCard extends StatelessWidget {
   final String title;
-  final String emoji;
+  final IconData icon;
   final Widget child;
-  const _ChartCard({required this.title, required this.emoji, required this.child});
+  const _ChartCard({required this.title, required this.icon, required this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -208,7 +208,7 @@ class _ChartCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
-            Text(emoji, style: const TextStyle(fontSize: 16)),
+            Icon(icon, color: AppColors.amber, size: 18),
             const SizedBox(width: 8),
             Text(title, style: TextStyle(color: AppColors.textPrimary, fontWeight: FontWeight.bold, fontSize: 14)),
           ]),
@@ -414,7 +414,7 @@ class _EmptyChart extends StatelessWidget {
       child: Center(child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Text('📈', style: TextStyle(fontSize: 28)),
+          Icon(Icons.show_chart, size: 28, color: AppColors.textMuted),
           const SizedBox(height: 6),
           Text(message, style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
         ],

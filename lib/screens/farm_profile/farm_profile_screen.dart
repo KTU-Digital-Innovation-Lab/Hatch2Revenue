@@ -247,7 +247,7 @@ class _FarmProfileScreenState extends State<FarmProfileScreen> {
           // Header
           Row(
             children: [
-              const Text('🏡', style: TextStyle(fontSize: 32)),
+              Icon(Icons.agriculture_outlined, color: AppColors.amber, size: 30),
               const SizedBox(width: 12),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,

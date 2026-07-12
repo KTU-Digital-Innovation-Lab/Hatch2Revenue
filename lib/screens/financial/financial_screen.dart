@@ -53,11 +53,12 @@ class FinancialScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SectionHeader(
-                title: '💰 Financial Dashboard',
+                icon: Icons.account_balance_wallet_outlined,
+                title: 'Financial Dashboard',
                 subtitle: 'Track expenses vs. revenue — feed, meds, labor, eggs, culled birds',
                 action: Row(mainAxisSize: MainAxisSize.min, children: [
                   GhostBtn(
-                    label: '📄 Export PDF',
+                    label: 'Export PDF',
                     onPressed: () => _showPdfOptions(context, rev, exp, net, txns),
                   ),
                   const SizedBox(width: 8),
@@ -79,9 +80,9 @@ class FinancialScreen extends StatelessWidget {
 
               _twoCol(
                 left: HtmlCard(
-                  header: const HtmlCardHeader(title: '💸 Expense Breakdown'),
+                  header: const HtmlCardHeader(icon: Icons.trending_down, title: 'Expense Breakdown'),
                   body: sortedExp.isEmpty
-                      ? const HtmlEmptyState(icon: '💸', message: 'No expenses logged yet.')
+                      ? const HtmlEmptyState(icon: Icons.trending_down, message: 'No expenses logged yet.')
                       : Column(
                           children: sortedExp.asMap().entries.map((e) {
                             final pct = exp > 0 ? (e.value.value / exp * 100).round() : 0;
@@ -95,9 +96,9 @@ class FinancialScreen extends StatelessWidget {
                         ),
                 ),
                 right: HtmlCard(
-                  header: const HtmlCardHeader(title: '💚 Revenue Breakdown'),
+                  header: const HtmlCardHeader(icon: Icons.trending_up, title: 'Revenue Breakdown'),
                   body: sortedRev.isEmpty
-                      ? const HtmlEmptyState(icon: '📊', message: 'No revenue logged yet.')
+                      ? const HtmlEmptyState(icon: Icons.trending_up, message: 'No revenue logged yet.')
                       : Column(
                           children: sortedRev.asMap().entries.map((e) {
                             final pct = rev > 0 ? (e.value.value / rev * 100).round() : 0;
@@ -113,11 +114,11 @@ class FinancialScreen extends StatelessWidget {
               ),
 
               HtmlCard(
-                header: const HtmlCardHeader(title: '📋 All Transactions'),
+                header: const HtmlCardHeader(icon: Icons.list_alt_outlined, title: 'All Transactions'),
                 bodyPadding: EdgeInsets.zero,
                 body: txns.isEmpty
                     ? HtmlEmptyState(
-                        icon: '💰',
+                        icon: Icons.account_balance_wallet_outlined,
                         message: 'No transactions yet.',
                         action: PrimaryBtn(label: '+ Add Transaction', small: true, onPressed: () => _showAddDialog(context, finProvider)),
                       )
@@ -155,7 +156,7 @@ class FinancialScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('📄 Farm Report'),
+        title: const Text('Farm Report'),
         content: Text(
           'How do you want the PDF report?',
           style: TextStyle(color: AppColors.textSecondary),
@@ -225,7 +226,7 @@ class FinancialScreen extends StatelessWidget {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, ss) => AlertDialog(
-          title: const Text('💰 Add Transaction'),
+          title: const Text('Add Transaction'),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               HtmlFormField(label: 'Date', child: HtmlDateTile(date: DateTime.now())),
@@ -286,7 +287,7 @@ class FinancialScreen extends StatelessWidget {
                 ));
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: const Text('Transaction saved ✓'),
+                  content: const Text('Transaction saved'),
                   backgroundColor: AppColors.green.withValues(alpha: 0.9),
                   behavior: SnackBarBehavior.floating,
                 ));
@@ -369,7 +370,7 @@ class FinancialScreen extends StatelessWidget {
                 ));
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content: Text('Transaction updated ✏️'),
+                  content: Text('Transaction updated'),
                   backgroundColor: AppColors.cyan,
                   behavior: SnackBarBehavior.floating,
                 ));

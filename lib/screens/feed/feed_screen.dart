@@ -39,13 +39,13 @@ class _FeedScreenState extends State<FeedScreen> {
       _fcrResult = fcr.toStringAsFixed(2);
       if (fcr < 2.0) {
         _fcrColor  = AppColors.green;
-        _fcrRating = '✓ Excellent efficiency';
+        _fcrRating = 'Excellent efficiency';
       } else if (fcr < 2.5) {
         _fcrColor  = AppColors.amber;
-        _fcrRating = '⚠ Average — monitor feed';
+        _fcrRating = 'Average — monitor feed';
       } else {
         _fcrColor  = AppColors.red;
-        _fcrRating = '✕ Poor — investigate feeding';
+        _fcrRating = 'Poor — investigate feeding';
       }
     });
   }
@@ -72,10 +72,11 @@ class _FeedScreenState extends State<FeedScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SectionHeader(
-                title: '🌾 Feed Monitoring System',
+                icon: Icons.grass,
+                title: 'Feed Monitoring System',
                 subtitle: 'Feed is tracked in bags (1 bag = 50 kg) — inventory, daily logs, and FCR',
                 action: Row(mainAxisSize: MainAxisSize.min, children: [
-                  GhostBtn(label: '📦 Add Stock', onPressed: () => _showStockDialog(context, feedProvider)),
+                  GhostBtn(label: 'Add Stock', onPressed: () => _showStockDialog(context, feedProvider)),
                   const SizedBox(width: 8),
                   PrimaryBtn(label: '+ Log Consumption', onPressed: () => _showLogDialog(context, feedProvider)),
                 ]),
@@ -94,7 +95,8 @@ class _FeedScreenState extends State<FeedScreen> {
               // Stock inventory card
               HtmlCard(
                 header: HtmlCardHeader(
-                  title: '📦 Feed Stock Inventory',
+                  icon: Icons.inventory_2_outlined,
+                  title: 'Feed Stock Inventory',
                   trailing: feedProvider.stockAlertCount > 0
                       ? TagChip(label: '${feedProvider.stockAlertCount} alert${feedProvider.stockAlertCount != 1 ? "s" : ""}', color: AppColors.red)
                       : TagChip(label: '${feedProvider.inventory.length} item${feedProvider.inventory.length != 1 ? "s" : ""}', color: AppColors.green),
@@ -102,7 +104,7 @@ class _FeedScreenState extends State<FeedScreen> {
                 bodyPadding: EdgeInsets.zero,
                 body: feedProvider.inventory.isEmpty
                     ? HtmlEmptyState(
-                        icon: '📦',
+                        icon: Icons.inventory_2_outlined,
                         message: 'No stock recorded. Add feed purchases to track inventory and days-left estimates.',
                         action: PrimaryBtn(label: '+ Add Stock', small: true, onPressed: () => _showStockDialog(context, feedProvider)),
                       )
@@ -111,18 +113,18 @@ class _FeedScreenState extends State<FeedScreen> {
 
               _twoCol(
                 left: HtmlCard(
-                  header: const HtmlCardHeader(title: '📋 Daily Consumption Logs'),
+                  header: const HtmlCardHeader(icon: Icons.list_alt_outlined, title: 'Daily Consumption Logs'),
                   bodyPadding: EdgeInsets.zero,
                   body: records.isEmpty
                       ? HtmlEmptyState(
-                          icon: '🌾',
+                          icon: Icons.grass,
                           message: 'No logs yet. Start logging daily feed.',
                           action: PrimaryBtn(label: '+ Log Consumption', small: true, onPressed: () => _showLogDialog(context, feedProvider)),
                         )
                       : _logsTable(context, records, feedProvider),
                 ),
                 right: HtmlCard(
-                  header: HtmlCardHeader(title: '⚖️ FCR Calculator', trailing: const TagChip(label: 'Auto-computed', color: AppColors.green)),
+                  header: HtmlCardHeader(icon: Icons.balance, title: 'FCR Calculator', trailing: const TagChip(label: 'Auto-computed', color: AppColors.green)),
                   body: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -290,7 +292,7 @@ class _FeedScreenState extends State<FeedScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, ss) => AlertDialog(
-          title: Text(existing == null ? '📦 Add Feed Stock' : 'Edit Feed Stock'),
+          title: Text(existing == null ? 'Add Feed Stock' : 'Edit Feed Stock'),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               HtmlFormField(
@@ -370,7 +372,7 @@ class _FeedScreenState extends State<FeedScreen> {
 
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text(existing == null ? 'Stock added ✓' : 'Stock updated ✏️'),
+                  content: Text(existing == null ? 'Stock added' : 'Stock updated'),
                   backgroundColor: AppColors.green.withValues(alpha: 0.9),
                   behavior: SnackBarBehavior.floating,
                 ));
@@ -421,7 +423,7 @@ class _FeedScreenState extends State<FeedScreen> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, ss) => AlertDialog(
-          title: const Text('🌾 Log Daily Feed Consumption'),
+          title: const Text('Log Daily Feed Consumption'),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               HtmlFormField(label: 'Date', child: HtmlDateTile(date: DateTime.now())),
@@ -570,8 +572,8 @@ class _FeedScreenState extends State<FeedScreen> {
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                   content: Text(cost > 0
-                      ? 'Consumption logged ✓ — expense posted to Financials'
-                      : 'Consumption logged ✓'),
+                      ? 'Consumption logged — expense posted to Financials'
+                      : 'Consumption logged'),
                   backgroundColor: AppColors.green.withValues(alpha: 0.9),
                   behavior: SnackBarBehavior.floating,
                 ));
@@ -627,7 +629,7 @@ class _FeedScreenState extends State<FeedScreen> {
                 if (bags <= 0) return;
                 provider.updateRecord(feed.copyWith(feedType: selectedType, bagsUsed: 1, kgPerBag: Units.bagsToKg(bags)));
                 Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Record updated ✏️'), backgroundColor: AppColors.cyan, behavior: SnackBarBehavior.floating));
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Record updated'), backgroundColor: AppColors.cyan, behavior: SnackBarBehavior.floating));
               },
               child: const Text('Save Changes'),
             ),

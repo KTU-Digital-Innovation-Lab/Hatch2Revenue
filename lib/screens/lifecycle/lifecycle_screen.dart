@@ -47,7 +47,8 @@ class LifecycleScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SectionHeader(
-                title: '🐣 Batch Lifecycle Tracker',
+                icon: Icons.pets,
+                title: 'Batch Lifecycle Tracker',
                 subtitle: 'Track breed info, entry dates, age in weeks, and stage transitions',
                 action: PrimaryBtn(
                   label: '+ Add Batch',
@@ -65,13 +66,14 @@ class LifecycleScreen extends StatelessWidget {
 
               HtmlCard(
                 header: HtmlCardHeader(
-                  title: '📋 All Batches',
+                  icon: Icons.list_alt_outlined,
+                  title: 'All Batches',
                   trailing: TagChip(label: '${batches.length} Batch${batches.length != 1 ? "es" : ""}', color: AppColors.amber),
                 ),
                 bodyPadding: EdgeInsets.zero,
                 body: batches.isEmpty
                     ? HtmlEmptyState(
-                        icon: '🐣',
+                        icon: Icons.pets,
                         message: 'No batches yet. Add your first batch.',
                         action: PrimaryBtn(label: '+ Add Batch', small: true, onPressed: () => _showAddDialog(context, batchProvider)),
                       )
@@ -176,7 +178,7 @@ class LifecycleScreen extends StatelessWidget {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, ss) => AlertDialog(
-          title: const Text('🐣 Add New Batch'),
+          title: const Text('Add New Batch'),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               HtmlFormField(label: 'Batch ID', child: TextField(controller: idCtrl, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. B-2026-01'))),
@@ -286,8 +288,8 @@ class LifecycleScreen extends StatelessWidget {
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                   content: Text(scheduled > 0
-                      ? 'Batch saved ✓ · $scheduled vaccinations scheduled'
-                      : 'Batch saved ✓'),
+                      ? 'Batch saved · $scheduled vaccinations scheduled'
+                      : 'Batch saved'),
                   backgroundColor: AppColors.green.withValues(alpha: 0.9),
                   behavior: SnackBarBehavior.floating,
                 ));
@@ -329,7 +331,7 @@ class LifecycleScreen extends StatelessWidget {
       if (reminder.isAfter(today)) {
         NotificationService().scheduleNotification(
           id: v.id.hashCode.abs(),
-          title: '💉 Vaccination Reminder',
+          title: 'Vaccination Reminder',
           body: '${v.vaccineName} for ${batch.name} is due tomorrow!',
           scheduledDate: reminder,
         );
@@ -410,7 +412,7 @@ class LifecycleScreen extends StatelessWidget {
                 }
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content: Text('Batch updated ✏️'),
+                  content: Text('Batch updated'),
                   backgroundColor: AppColors.cyan,
                   behavior: SnackBarBehavior.floating,
                 ));

@@ -50,7 +50,8 @@ class EggProductionScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SectionHeader(
-                title: '🥚 Egg Production Tracker',
+                icon: Icons.egg_outlined,
+                title: 'Egg Production Tracker',
                 subtitle: 'Production is tracked in crates (30 eggs = 1 crate)',
                 action: PrimaryBtn(label: '+ Log Today\'s Eggs', onPressed: () => _showAddDialog(context)),
               ),
@@ -65,7 +66,8 @@ class EggProductionScreen extends StatelessWidget {
 
               HtmlCard(
                 header: HtmlCardHeader(
-                  title: '📅 Monthly Production Calendar',
+                  icon: Icons.calendar_month_outlined,
+                  title: 'Monthly Production Calendar',
                   trailing: TagChip(label: _monthLabel(), color: AppColors.green),
                 ),
                 body: Column(
@@ -73,24 +75,24 @@ class EggProductionScreen extends StatelessWidget {
                     _buildCalendar(logs, avgPerDay),
                     const SizedBox(height: 10),
                     Row(children: [
-                      _legend('🟢', 'High',    AppColors.green),
+                      _legend('High',    AppColors.green),
                       const SizedBox(width: 12),
-                      _legend('🟡', 'Average', AppColors.amber),
+                      _legend('Average', AppColors.amber),
                       const SizedBox(width: 12),
-                      _legend('🔴', 'Low',     AppColors.red),
+                      _legend('Low',     AppColors.red),
                       const SizedBox(width: 12),
-                      _legend('⬜', 'No data', AppColors.textMuted),
+                      _legend('No data', AppColors.textMuted),
                     ]),
                   ],
                 ),
               ),
 
               HtmlCard(
-                header: const HtmlCardHeader(title: '📋 All Egg Logs'),
+                header: const HtmlCardHeader(icon: Icons.list_alt_outlined, title: 'All Egg Logs'),
                 bodyPadding: EdgeInsets.zero,
                 body: logs.isEmpty
                     ? HtmlEmptyState(
-                        icon: '🥚',
+                        icon: Icons.egg_outlined,
                         message: 'No egg records yet.',
                         action: PrimaryBtn(label: '+ Log Eggs', small: true, onPressed: () => _showAddDialog(context)),
                       )
@@ -111,9 +113,9 @@ class EggProductionScreen extends StatelessWidget {
     return '${months[now.month - 1].toUpperCase()} ${now.year}';
   }
 
-  Widget _legend(String icon, String label, Color color) => Row(mainAxisSize: MainAxisSize.min, children: [
-    Text(icon, style: const TextStyle(fontSize: 10)),
-    const SizedBox(width: 4),
+  Widget _legend(String label, Color color) => Row(mainAxisSize: MainAxisSize.min, children: [
+    Container(width: 9, height: 9, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+    const SizedBox(width: 5),
     Text(label, style: GoogleFonts.inter(color: color, fontSize: 9)),
   ]);
 
@@ -229,7 +231,7 @@ class EggProductionScreen extends StatelessWidget {
             (typedCrates * Units.eggsPerCrate).round() + typedLoose;
         final prodRate = birds > 0 ? typedCount / birds * 100 : 0.0;
         return AlertDialog(
-        title: const Text('🥚 Log Egg Production'),
+        title: const Text('Log Egg Production'),
         content: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             HtmlFormField(label: 'Date', child: HtmlDateTile(date: DateTime.now())),
@@ -368,8 +370,8 @@ class EggProductionScreen extends StatelessWidget {
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                 content: Text(saleValue > 0
-                    ? 'Egg log saved ✓ — income posted to Financials'
-                    : 'Egg log saved ✓'),
+                    ? 'Egg log saved — income posted to Financials'
+                    : 'Egg log saved'),
                 backgroundColor: AppColors.green.withValues(alpha: 0.9),
                 behavior: SnackBarBehavior.floating,
               ));
@@ -412,7 +414,7 @@ class EggProductionScreen extends StatelessWidget {
               if (count <= 0) return;
               provider.updateRecord(egg.copyWith(eggCount: count, damagedCount: damaged));
               Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Record updated ✏️'), backgroundColor: AppColors.cyan, behavior: SnackBarBehavior.floating));
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Record updated'), backgroundColor: AppColors.cyan, behavior: SnackBarBehavior.floating));
             },
             child: const Text('Save Changes'),
           ),
