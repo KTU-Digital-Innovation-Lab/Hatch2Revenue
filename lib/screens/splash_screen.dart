@@ -20,27 +20,29 @@ class _SplashScreenState extends State<SplashScreen>
     with TickerProviderStateMixin {
   late final AnimationController _entrance = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 900),
+    duration: const Duration(milliseconds: 450),
   )..forward();
 
   late final AnimationController _progress = AnimationController(
     vsync: this,
-    duration: const Duration(milliseconds: 2200),
+    duration: const Duration(milliseconds: 800),
   )..forward();
 
   @override
   void initState() {
     super.initState();
-    // Hold briefly so init (DB, notifications, sync check) settles,
-    // then fade into the main app.
-    Future.delayed(const Duration(milliseconds: 2400), _goToApp);
+    // The native launch screen already showed this same rooster-on-green
+    // while the engine booted, so this is just a short brand beat — hold
+    // ~800ms, then fade into the app. (Providers keep loading in the
+    // background regardless; nothing here gates real work.)
+    Future.delayed(const Duration(milliseconds: 800), _goToApp);
   }
 
   void _goToApp() {
     if (!mounted) return;
     SplashScreen.completed = true;
     Navigator.of(context).pushReplacement(PageRouteBuilder(
-      transitionDuration: const Duration(milliseconds: 600),
+      transitionDuration: const Duration(milliseconds: 400),
       pageBuilder: (_, _, _) => const MainNavigation(),
       transitionsBuilder: (_, anim, _, child) =>
           FadeTransition(opacity: anim, child: child),

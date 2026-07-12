@@ -17,11 +17,11 @@ void main() {
     expect(find.text('Hatch2Revenue'), findsOneWidget);
     expect(find.text('From hatch to harvest.'), findsOneWidget);
 
-    // Advance past the hold timer (2400ms) and the fade transition
-    // (600ms). Explicit pumps — pumpAndSettle would hang on the
+    // Advance past the hold timer (800ms) and the fade transition
+    // (400ms). Explicit pumps — pumpAndSettle would hang on the
     // dashboard's repeating "bobbing hen" animation.
-    await tester.pump(const Duration(milliseconds: 2500));
-    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pump(const Duration(milliseconds: 900));
+    await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.text('Batch Lifecycle'), findsOneWidget);
     expect(find.text('Financials'), findsOneWidget);

@@ -56,6 +56,7 @@ dev_dependencies:
     sdk: flutter
   flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
+  flutter_native_splash: ^2.4.3
 
 flutter:
   uses-material-design: true
@@ -87,3 +88,22 @@ flutter_launcher_icons:
   windows:
     generate: true
     icon_size: 256
+
+# Native launch screen (the OS-drawn screen shown while the Flutter
+# engine boots, before our Dart SplashScreen). Matched to the splash so
+# there is no white flash — same pale-green background + rooster badge,
+# with a dark-mode variant. Handles the Android 12+ splash API too.
+# Regenerate: dart run flutter_native_splash:create
+flutter_native_splash:
+  color: "#EAF3E7"
+  image: assets/splash_fg.png
+  color_dark: "#1A231A"
+  image_dark: assets/splash_fg.png
+  android_12:
+    color: "#EAF3E7"
+    image: assets/splash_fg.png
+    color_dark: "#1A231A"
+    image_dark: assets/splash_fg.png
+  android: true
+  ios: true
+  web: false
