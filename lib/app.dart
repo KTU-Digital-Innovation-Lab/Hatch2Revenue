@@ -504,6 +504,9 @@ class _MainNavigationState extends State<MainNavigation> {
                     final showBadge = idx == 2 && overdueCount > 0;
                     return _DrawerNavTile(
                       icon: _icons[idx],
+                      iconImage: idx == 1
+                          ? const AssetImage('assets/hen_glyph.png')
+                          : null,
                       title: _titles[idx],
                       isSelected: isSelected,
                       badge: showBadge ? overdueCount : null,
@@ -546,6 +549,7 @@ class _DrawerNavTile extends StatelessWidget {
   final bool isSelected;
   final int? badge;
   final VoidCallback onTap;
+  final ImageProvider? iconImage;
 
   const _DrawerNavTile({
     required this.icon,
@@ -553,6 +557,7 @@ class _DrawerNavTile extends StatelessWidget {
     required this.isSelected,
     required this.onTap,
     this.badge,
+    this.iconImage,
   });
 
   @override
@@ -578,11 +583,17 @@ class _DrawerNavTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
           child: Row(
             children: [
-              Icon(
-                icon,
-                size: 18,
-                color: isSelected ? AppColors.amber : AppColors.textSecondary,
-              ),
+              iconImage != null
+                  ? ImageIcon(
+                      iconImage,
+                      size: 18,
+                      color: isSelected ? AppColors.amber : AppColors.textSecondary,
+                    )
+                  : Icon(
+                      icon,
+                      size: 18,
+                      color: isSelected ? AppColors.amber : AppColors.textSecondary,
+                    ),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(

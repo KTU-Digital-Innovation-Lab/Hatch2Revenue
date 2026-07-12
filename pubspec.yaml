@@ -64,6 +64,7 @@ flutter:
   assets:
     - assets/chicken.png
     - assets/chicken_tractor.png
+    - assets/hen_glyph.png
     # Bundled fonts so the app renders correctly with no internet —
     # google_fonts loads these instead of fetching at runtime.
     - google_fonts/

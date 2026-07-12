@@ -152,6 +152,7 @@ class HomeScreen extends StatelessWidget {
               children: [
                 _NavCard(
                   icon: Icons.pets,
+                  iconImage: const AssetImage('assets/hen_glyph.png'),
                   color: AppColors.amber,
                   title: 'Batch Lifecycle',
                   sub: '${batchProvider.batches.length} active batch${batchProvider.batches.length != 1 ? "es" : ""}',
@@ -525,6 +526,7 @@ class _NavCard extends StatelessWidget {
   final String title;
   final String sub;
   final VoidCallback onTap;
+  final ImageProvider? iconImage;
 
   const _NavCard({
     required this.icon,
@@ -532,6 +534,7 @@ class _NavCard extends StatelessWidget {
     required this.title,
     required this.sub,
     required this.onTap,
+    this.iconImage,
   });
 
   @override
@@ -560,7 +563,9 @@ class _NavCard extends StatelessWidget {
                   color: color.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(icon, color: color, size: 24),
+                child: iconImage != null
+                    ? ImageIcon(iconImage, color: color, size: 24)
+                    : Icon(icon, color: color, size: 24),
               ),
               const SizedBox(height: 10),
               Text(

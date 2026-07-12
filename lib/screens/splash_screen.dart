@@ -79,80 +79,80 @@ class _SplashScreenState extends State<SplashScreen>
         child: SafeArea(
           child: Column(
             children: [
-              Expanded(
-                child: Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ScaleTransition(
-                        scale: logoIn,
-                        child: Container(
-                          width: 132,
-                          height: 132,
-                          decoration: BoxDecoration(
-                            color: AppColors.surface.withValues(alpha: 0.7),
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppColors.amber.withValues(alpha: 0.25),
-                                blurRadius: 34,
-                                spreadRadius: 2,
-                              ),
-                            ],
-                          ),
-                          padding: const EdgeInsets.all(18),
-                          child: Image.asset('assets/chicken.png',
-                              fit: BoxFit.contain),
-                        ),
-                      ),
-                      const SizedBox(height: 26),
-                      FadeTransition(
-                        opacity: fadeIn,
-                        child: Column(
-                          children: [
-                            Text(
-                              'Hatch2Revenue',
-                              style: GoogleFonts.poppins(
-                                color: AppColors.textPrimary,
-                                fontSize: 30,
-                                fontWeight: FontWeight.w800,
-                                letterSpacing: 0.3,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'From hatch to harvest.',
-                              style: GoogleFonts.inter(
-                                color: AppColors.amber,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                                letterSpacing: 0.4,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+              // Wordmark at the top.
+              Padding(
+                padding: const EdgeInsets.only(top: 52),
+                child: FadeTransition(
+                  opacity: fadeIn,
+                  child: Text(
+                    'Hatch2Revenue',
+                    style: GoogleFonts.poppins(
+                      color: AppColors.textPrimary,
+                      fontSize: 30,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.3,
+                    ),
                   ),
                 ),
               ),
-              // Slim progress bar reassures the farmer things are loading.
+              // Rooster centred in the space between title and tagline.
+              Expanded(
+                child: Center(
+                  child: ScaleTransition(
+                    scale: logoIn,
+                    child: Container(
+                      width: 132,
+                      height: 132,
+                      decoration: BoxDecoration(
+                        color: AppColors.surface.withValues(alpha: 0.7),
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.amber.withValues(alpha: 0.25),
+                            blurRadius: 34,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      padding: const EdgeInsets.all(18),
+                      child: Image.asset('assets/chicken.png',
+                          fit: BoxFit.contain),
+                    ),
+                  ),
+                ),
+              ),
+              // Tagline + slim progress bar at the bottom.
               Padding(
                 padding: const EdgeInsets.only(bottom: 40, left: 60, right: 60),
                 child: FadeTransition(
                   opacity: fadeIn,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(4),
-                    child: AnimatedBuilder(
-                      animation: _progress,
-                      builder: (_, _) => LinearProgressIndicator(
-                        value: _progress.value,
-                        minHeight: 4,
-                        backgroundColor:
-                            AppColors.textSecondary.withValues(alpha: 0.15),
-                        valueColor: AlwaysStoppedAnimation(AppColors.amber),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'From hatch to harvest.',
+                        style: GoogleFonts.inter(
+                          color: AppColors.amber,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          letterSpacing: 0.4,
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 20),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: AnimatedBuilder(
+                          animation: _progress,
+                          builder: (_, _) => LinearProgressIndicator(
+                            value: _progress.value,
+                            minHeight: 4,
+                            backgroundColor:
+                                AppColors.textSecondary.withValues(alpha: 0.15),
+                            valueColor: AlwaysStoppedAnimation(AppColors.amber),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
