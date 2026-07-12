@@ -3,7 +3,7 @@
     "short_name": "hatch2revenue",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#F7FAF7",
+    "background_color": "#2E7D32",
     "theme_color": "#2E7D32",
     "description": "A new Flutter project.",
     "orientation": "portrait-primary",
