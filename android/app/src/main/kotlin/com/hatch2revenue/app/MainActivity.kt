@@ -1,4 +1,4 @@
-package com.example.hatch2revenue
+package com.hatch2revenue.app
 
 import io.flutter.embedding.android.FlutterActivity
 
