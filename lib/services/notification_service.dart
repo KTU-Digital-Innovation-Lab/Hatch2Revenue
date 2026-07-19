@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz_data;
@@ -29,10 +30,24 @@ class NotificationService {
     );
 
     await _notifications.initialize(initSettings);
+    await requestPermissions();
   }
 
+  /// Android 13+ gates notifications behind a runtime permission —
+  /// without this request nothing the app schedules is ever shown.
   Future<void> requestPermissions() async {
-    // Permissions handled by the OS on first notification
+    try {
+      await _notifications
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.requestNotificationsPermission();
+      await _notifications
+          .resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin>()
+          ?.requestPermissions(alert: true, badge: true, sound: true);
+    } catch (e) {
+      debugPrint('NotificationService: permission request failed: $e');
+    }
   }
 
   Future<void> showNotification({
@@ -89,16 +104,25 @@ class NotificationService {
 
     final tzDateTime = tz.TZDateTime.from(scheduledDate, tz.local);
 
-    await _notifications.zonedSchedule(
-      id,
-      title,
-      body,
-      tzDateTime,
-      details,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-    );
+    try {
+      // Inexact: fires within a few minutes of the target, which is
+      // plenty for a day-before reminder — and unlike exact alarms it
+      // needs no special permission on Android 14+ (where exact is
+      // denied by default and silently killed every reminder).
+      await _notifications.zonedSchedule(
+        id,
+        title,
+        body,
+        tzDateTime,
+        details,
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+      );
+    } catch (e) {
+      // A failed reminder must never break the save flow it rides on.
+      debugPrint('NotificationService: schedule failed: $e');
+    }
   }
 
   Future<void> cancelNotification(int id) async {

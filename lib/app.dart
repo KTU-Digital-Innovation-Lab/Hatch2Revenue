@@ -526,7 +526,7 @@ class _MainNavigationState extends State<MainNavigation> {
               border: Border(top: BorderSide(color: AppColors.border)),
             ),
             child: Text(
-              'Hatch2Revenue v1.3.0',
+              'Hatch2Revenue v1.3.1',
               style: GoogleFonts.inter(
                 color: AppColors.textMuted,
                 fontSize: 12,

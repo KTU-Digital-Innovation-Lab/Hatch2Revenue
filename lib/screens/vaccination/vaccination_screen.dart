@@ -318,15 +318,15 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
               ),
               const SizedBox(height: 12),
               HtmlFormField(
-                label: 'SMS Alert?',
+                label: 'Reminder?',
                 child: DropdownButtonFormField<bool>(
                   initialValue: smsAlert,
                   dropdownColor: AppColors.surfaceLight,
                   style: TextStyle(color: AppColors.textPrimary),
                   decoration: htmlInputDec(),
                   items: [
-                    DropdownMenuItem(value: true,  child: Text('Yes — send SMS', style: TextStyle(color: AppColors.textPrimary))),
-                    DropdownMenuItem(value: false, child: Text('No — skip SMS',  style: TextStyle(color: AppColors.textPrimary))),
+                    DropdownMenuItem(value: true,  child: Text('Yes — remind me the day before', style: TextStyle(color: AppColors.textPrimary))),
+                    DropdownMenuItem(value: false, child: Text('No reminder', style: TextStyle(color: AppColors.textPrimary))),
                   ],
                   onChanged: (v) => ss(() => smsAlert = v ?? true),
                 ),
