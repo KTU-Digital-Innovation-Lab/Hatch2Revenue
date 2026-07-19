@@ -148,10 +148,12 @@ class LifecycleScreen extends StatelessWidget {
   }
 
   String _stageLabel(BatchType t) {
+    // Point of lay is 16-22 weeks for day-old chicks; growers cover the
+    // pullet window until then.
     switch (t) {
       case BatchType.dayOldChicks: return 'Brooding (0-4 wks)';
-      case BatchType.growers:      return 'Grower (4-12 wks)';
-      case BatchType.layers:       return 'Layer (12+ wks)';
+      case BatchType.growers:      return 'Grower (4-16 wks)';
+      case BatchType.layers:       return 'Layer (from 16-22 wks)';
     }
   }
 

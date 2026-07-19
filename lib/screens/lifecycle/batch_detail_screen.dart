@@ -240,8 +240,12 @@ class BatchDetailScreen extends StatelessWidget {
   /// Lifecycle stage derived from age and bird type — matches the
   /// table's stage semantics but expressed as the timeline steps.
   String _stageForAge(int weeks, BatchType type) {
+    // Laying begins between 16 and 22 weeks; the timeline flips at the
+    // start of that window (a flock the owner marked as layers is
+    // laying regardless of age).
+    if (type == BatchType.layers) return 'Laying';
     if (weeks <= 4) return 'Brooding';
-    if (weeks <= 18) return 'Growing';
+    if (weeks <= 16) return 'Growing';
     return 'Laying';
   }
 }
