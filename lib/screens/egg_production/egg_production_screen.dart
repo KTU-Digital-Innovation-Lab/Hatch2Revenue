@@ -178,11 +178,12 @@ class EggProductionScreen extends StatelessWidget {
 
   Widget _logsTable(BuildContext context, List<EggProduction> logs, EggProductionProvider provider, double Function(int) hdPct) {
     final sorted = [...logs]..sort((a, b) => b.date.compareTo(a.date));
+    final bp = context.read<BatchProvider>();
     return HtmlTable(
       headers: ['Date', 'Batch', 'Time', 'Crates', 'Good', 'Damaged', 'HD%', ''],
       rows: sorted.map((e) => [
         Text(DateFormat('d MMM yyyy').format(e.date), style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
-        Text(e.batchId, style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11)),
+        Text(bp.batchLabel(e.batchId), style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11)),
         Text(e.period ?? '—', style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
         Text(Units.crateLabel(e.eggCount), style: GoogleFonts.inter(color: AppColors.green, fontWeight: FontWeight.w500, fontSize: 12)),
         Text(Units.crateLabel(e.goodCount), style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11)),
@@ -204,8 +205,10 @@ class EggProductionScreen extends StatelessWidget {
     final notesCtrl   = TextEditingController();
 
     final batches = context.read<BatchProvider>().batches;
-    final batchOptions = ['All', ...batches.map((b) => b.name)];
-    String selectedBatch = batchOptions.first;
+    // Records reference batches by ID; 'All' means the whole flock.
+    final batchOptions = {'All': 'All', for (final b in batches) b.id: b.name};
+    String selectedBatch = 'All';
+    DateTime selectedDate = DateTime.now();
     // Default the period from the time of day, the way field workers
     // log collections (morning/afternoon/evening rounds).
     const periods = ['Morning', 'Afternoon', 'Evening'];
@@ -234,7 +237,20 @@ class EggProductionScreen extends StatelessWidget {
         title: const Text('Log Egg Production'),
         content: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            HtmlFormField(label: 'Date', child: HtmlDateTile(date: DateTime.now())),
+            HtmlFormField(
+              label: 'Date',
+              child: HtmlDateTile(
+                date: selectedDate,
+                onTap: () async {
+                  final d = await showDatePicker(
+                      context: ctx,
+                      initialDate: selectedDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now());
+                  if (d != null) ss(() => selectedDate = d);
+                },
+              ),
+            ),
             const SizedBox(height: 12),
             HtmlFormField(
               label: 'Batch / Flock',
@@ -243,9 +259,9 @@ class EggProductionScreen extends StatelessWidget {
                 dropdownColor: AppColors.surfaceLight,
                 style: TextStyle(color: AppColors.textPrimary),
                 decoration: htmlInputDec(),
-                items: batchOptions.map((b) => DropdownMenuItem(
-                  value: b,
-                  child: Text(b, style: TextStyle(color: AppColors.textPrimary)),
+                items: batchOptions.entries.map((e) => DropdownMenuItem(
+                  value: e.key,
+                  child: Text(e.value, style: TextStyle(color: AppColors.textPrimary)),
                 )).toList(),
                 onChanged: (v) => ss(() => selectedBatch = v ?? selectedBatch),
               ),
@@ -345,7 +361,7 @@ class EggProductionScreen extends StatelessWidget {
               final price = pricePerCrate / Units.eggsPerCrate;
               context.read<EggProductionProvider>().addRecord(EggProduction(
                 batchId: selectedBatch,
-                date: DateTime.now(),
+                date: selectedDate,
                 eggCount: count,
                 damagedCount: damaged,
                 pricePerEgg: price,
@@ -358,7 +374,7 @@ class EggProductionScreen extends StatelessWidget {
               if (saleValue > 0) {
                 context.read<FinancialProvider>().addTransaction(
                   FinancialTransaction(
-                    date: DateTime.now(),
+                    date: selectedDate,
                     type: TransactionType.income,
                     category: TransactionCategory.eggSales,
                     amount: saleValue,

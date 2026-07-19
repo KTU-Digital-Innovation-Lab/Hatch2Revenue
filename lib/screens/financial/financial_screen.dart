@@ -221,6 +221,7 @@ class FinancialScreen extends StatelessWidget {
     int selectedCategory = 0;
     final amountCtrl = TextEditingController();
     final descCtrl   = TextEditingController();
+    DateTime selectedDate = DateTime.now();
 
     showDialog(
       context: context,
@@ -229,7 +230,20 @@ class FinancialScreen extends StatelessWidget {
           title: const Text('Add Transaction'),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              HtmlFormField(label: 'Date', child: HtmlDateTile(date: DateTime.now())),
+              HtmlFormField(
+                label: 'Date',
+                child: HtmlDateTile(
+                  date: selectedDate,
+                  onTap: () async {
+                    final d = await showDatePicker(
+                        context: ctx,
+                        initialDate: selectedDate,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime.now());
+                    if (d != null) ss(() => selectedDate = d);
+                  },
+                ),
+              ),
               const SizedBox(height: 12),
               HtmlFormField(
                 label: 'Type',
@@ -279,7 +293,7 @@ class FinancialScreen extends StatelessWidget {
                 final amount = double.tryParse(amountCtrl.text.trim()) ?? 0;
                 if (amount <= 0) return;
                 provider.addTransaction(FinancialTransaction(
-                  date: DateTime.now(),
+                  date: selectedDate,
                   type: TransactionType.values[selectedType],
                   category: TransactionCategory.values[selectedCategory],
                   amount: amount,
@@ -305,6 +319,7 @@ class FinancialScreen extends StatelessWidget {
     int selectedCategory = txn.category.index;
     final amountCtrl = TextEditingController(text: '${txn.amount}');
     final descCtrl   = TextEditingController(text: txn.description ?? '');
+    DateTime selectedDate = txn.date;
 
     showDialog(
       context: context,
@@ -313,7 +328,20 @@ class FinancialScreen extends StatelessWidget {
           title: const Text('Edit Transaction'),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              HtmlFormField(label: 'Date', child: HtmlDateTile(date: txn.date)),
+              HtmlFormField(
+                label: 'Date',
+                child: HtmlDateTile(
+                  date: selectedDate,
+                  onTap: () async {
+                    final d = await showDatePicker(
+                        context: ctx,
+                        initialDate: selectedDate,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime.now());
+                    if (d != null) ss(() => selectedDate = d);
+                  },
+                ),
+              ),
               const SizedBox(height: 12),
               HtmlFormField(
                 label: 'Type',
@@ -363,6 +391,7 @@ class FinancialScreen extends StatelessWidget {
                 final amount = double.tryParse(amountCtrl.text.trim()) ?? 0;
                 if (amount <= 0) return;
                 provider.updateTransaction(txn.copyWith(
+                  date: selectedDate,
                   type: TransactionType.values[selectedType],
                   category: TransactionCategory.values[selectedCategory],
                   amount: amount,

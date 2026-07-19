@@ -156,18 +156,22 @@ class MortalityScreen extends StatelessWidget {
 
   Widget _logsTable(BuildContext context, List<Mortality> logs, MortalityProvider provider) {
     final sorted = [...logs]..sort((a, b) => b.date.compareTo(a.date));
+    final bp = context.read<BatchProvider>();
     return HtmlTable(
       headers: ['Date', 'Deaths', 'Cause', 'Batch', ''],
-      rows: sorted.map((r) => [
+      rows: sorted.map((r) {
+        final label = bp.batchLabel(r.batchId);
+        return [
         Text(DateFormat('d MMM yyyy').format(r.date), style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
         Text('${r.count}', style: GoogleFonts.inter(color: AppColors.red, fontWeight: FontWeight.w500, fontSize: 12)),
         Text(r.causeName, style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11)),
-        Text(r.batchId.length > 8 ? r.batchId.substring(0, 8) : r.batchId, style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
+        Text(label.length > 12 ? '${label.substring(0, 12)}…' : label, style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
         Row(mainAxisSize: MainAxisSize.min, children: [
           EditBtn(onTap: () => _showEditDialog(context, r, provider)),
           DelBtn(onTap: () => _confirmDelete(context, r, provider)),
         ]),
-      ]).toList(),
+      ];
+      }).toList(),
     );
   }
 
@@ -176,8 +180,10 @@ class MortalityScreen extends StatelessWidget {
     final notesCtrl = TextEditingController();
     int selectedCause = 0;
     final batches = context.read<BatchProvider>().batches;
-    final batchOptions = [...batches.map((b) => b.name), 'All'];
-    String selectedBatch = batchOptions.first;
+    // Records reference batches by ID; 'All' means the whole flock.
+    final batchOptions = {for (final b in batches) b.id: b.name, 'All': 'All'};
+    String selectedBatch = batchOptions.keys.first;
+    DateTime selectedDate = DateTime.now();
 
     showDialog(
       context: context,
@@ -186,7 +192,20 @@ class MortalityScreen extends StatelessWidget {
           title: const Text('Log Mortality'),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              HtmlFormField(label: 'Date', child: HtmlDateTile(date: DateTime.now())),
+              HtmlFormField(
+                label: 'Date',
+                child: HtmlDateTile(
+                  date: selectedDate,
+                  onTap: () async {
+                    final d = await showDatePicker(
+                        context: ctx,
+                        initialDate: selectedDate,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime.now());
+                    if (d != null) ss(() => selectedDate = d);
+                  },
+                ),
+              ),
               const SizedBox(height: 12),
               HtmlFormField(
                 label: 'Number of Deaths',
@@ -215,9 +234,9 @@ class MortalityScreen extends StatelessWidget {
                   dropdownColor: AppColors.surfaceLight,
                   style: TextStyle(color: AppColors.textPrimary),
                   decoration: htmlInputDec(),
-                  items: batchOptions.map((b) => DropdownMenuItem(
-                    value: b,
-                    child: Text(b, style: TextStyle(color: AppColors.textPrimary)),
+                  items: batchOptions.entries.map((e) => DropdownMenuItem(
+                    value: e.key,
+                    child: Text(e.value, style: TextStyle(color: AppColors.textPrimary)),
                   )).toList(),
                   onChanged: (v) => ss(() => selectedBatch = v ?? selectedBatch),
                 ),
@@ -238,7 +257,7 @@ class MortalityScreen extends StatelessWidget {
                 context.read<MortalityProvider>().addRecord(Mortality(
                   batchId: selectedBatch,
                   count: count,
-                  date: DateTime.now(),
+                  date: selectedDate,
                   cause: MortalityCause.values[selectedCause],
                   notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
                 ));

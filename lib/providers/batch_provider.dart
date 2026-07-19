@@ -85,6 +85,15 @@ class BatchProvider extends ChangeNotifier {
     }
   }
 
+  /// User-facing label for a stored batch reference. Records reference
+  /// batches by id (legacy rows may still hold the name); either way the
+  /// farmer should see the batch's name. Unknown refs (deleted batches,
+  /// 'All') fall through unchanged.
+  String batchLabel(String? ref) {
+    if (ref == null || ref.isEmpty) return '—';
+    return getBatchByRef(ref)?.name ?? ref;
+  }
+
   void loadFromDb(List<Map<String, dynamic>> data) {
     _batches
       ..clear()

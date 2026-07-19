@@ -140,7 +140,7 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
                         padding: EdgeInsets.all(16),
                         child: HtmlEmptyState(icon: Icons.vaccines_outlined, message: 'No completed vaccines yet.'),
                       )
-                    : _auditTable(done),
+                    : _auditTable(context, done),
               ),
 
               const SizedBox(height: 60),
@@ -231,13 +231,16 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
     );
   }
 
-  Widget _auditTable(List<Vaccination> done) {
+  Widget _auditTable(BuildContext context, List<Vaccination> done) {
+    final bp = context.read<BatchProvider>();
     return HtmlTable(
       headers: ['Vaccine', 'Batch', 'Completed', 'Route'],
-      rows: done.map((v) => [
+      rows: done.map((v) {
+        final label = bp.batchLabel(v.batchId);
+        return [
         Text(v.vaccineName, style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 12)),
         Text(
-          v.batchId.length > 8 ? v.batchId.substring(0, 8) : v.batchId,
+          label.length > 12 ? '${label.substring(0, 12)}…' : label,
           style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11),
         ),
         Text(
@@ -247,13 +250,17 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
           style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11),
         ),
         TagChip(label: v.unit ?? v.typeName, color: AppColors.teal),
-      ]).toList(),
+      ];
+      }).toList(),
     );
   }
 
   void _showAddDialog(BuildContext context) {
     final nameCtrl  = TextEditingController();
-    final batchCtrl = TextEditingController();
+    // Records reference batches by ID; 'All' means the whole flock.
+    final vaccBatches = context.read<BatchProvider>().batches;
+    final batchOptions = {'All': 'All', for (final b in vaccBatches) b.id: b.name};
+    String selectedBatch = 'All';
     final notesCtrl = TextEditingController();
     DateTime selectedDate = DateTime.now().add(const Duration(days: 7));
     String selectedRoute = _routes.first;
@@ -274,7 +281,17 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
               const SizedBox(height: 12),
               HtmlFormField(
                 label: 'Batch / Flock',
-                child: TextField(controller: batchCtrl, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. B-2026-01 or All')),
+                child: DropdownButtonFormField<String>(
+                  initialValue: selectedBatch,
+                  dropdownColor: AppColors.surfaceLight,
+                  style: TextStyle(color: AppColors.textPrimary),
+                  decoration: htmlInputDec(),
+                  items: batchOptions.entries.map((e) => DropdownMenuItem(
+                    value: e.key,
+                    child: Text(e.value, style: TextStyle(color: AppColors.textPrimary)),
+                  )).toList(),
+                  onChanged: (v) => ss(() => selectedBatch = v ?? selectedBatch),
+                ),
               ),
               const SizedBox(height: 12),
               HtmlFormField(
@@ -341,10 +358,9 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
             ElevatedButton(
               onPressed: () {
                 final name  = nameCtrl.text.trim();
-                final batch = batchCtrl.text.trim();
                 if (name.isEmpty) return;
                 final vacc = Vaccination(
-                  batchId: batch.isEmpty ? 'All' : batch,
+                  batchId: selectedBatch,
                   vaccineName: name,
                   type: VaccineType.viral,
                   scheduledDate: selectedDate,
@@ -383,9 +399,14 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
   void _showEditDialog(BuildContext context, Vaccination vacc) {
     final nameCtrl  = TextEditingController(text: vacc.vaccineName);
     final notesCtrl = TextEditingController(text: vacc.notes ?? '');
-    final batches = context.read<BatchProvider>().batches;
-    // Keep the record's current batch selectable even if it was deleted/renamed.
-    final batchOptions = {...batches.map((b) => b.name), 'All', vacc.batchId}.toList();
+    final bp = context.read<BatchProvider>();
+    // Records reference batches by ID; keep the record's current ref
+    // selectable even if its batch was deleted (legacy/name refs too).
+    final batchOptions = {
+      'All': 'All',
+      for (final b in bp.batches) b.id: b.name,
+    };
+    batchOptions.putIfAbsent(vacc.batchId, () => bp.batchLabel(vacc.batchId));
     String selectedBatch = vacc.batchId;
     DateTime selectedDate = vacc.scheduledDate;
     String selectedRoute = _routes.contains(vacc.unit) ? vacc.unit! : _routes.first;
@@ -410,9 +431,9 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
                   dropdownColor: AppColors.surfaceLight,
                   style: TextStyle(color: AppColors.textPrimary),
                   decoration: htmlInputDec(),
-                  items: batchOptions.map((b) => DropdownMenuItem(
-                    value: b,
-                    child: Text(b, style: TextStyle(color: AppColors.textPrimary)),
+                  items: batchOptions.entries.map((e) => DropdownMenuItem(
+                    value: e.key,
+                    child: Text(e.value, style: TextStyle(color: AppColors.textPrimary)),
                   )).toList(),
                   onChanged: (v) => ss(() => selectedBatch = v ?? selectedBatch),
                 ),

@@ -36,18 +36,19 @@ class BatchDetailScreen extends StatelessWidget {
     final mortality = context.watch<MortalityProvider>();
     final vacc = context.watch<VaccinationProvider>();
 
-    // Records reference a batch by its name (the app's batch ref).
-    final ref = batch.name;
-    final batchEggs = eggs.records.where((e) => e.batchId == ref);
+    // Records reference a batch by its ID (legacy rows may still hold
+    // the name), so match either.
+    final refs = {batch.id, batch.name};
+    final batchEggs = eggs.records.where((e) => refs.contains(e.batchId));
     final totalEggs = batchEggs.fold(0, (s, e) => s + e.eggCount);
-    final batchFeed = feed.records.where((f) => f.batchId == ref);
+    final batchFeed = feed.records.where((f) => refs.contains(f.batchId));
     final feedKg = batchFeed.fold(0.0, (s, f) => s + f.totalKg);
     final feedCost = batchFeed.fold(0.0, (s, f) => s + f.totalCost);
     final batchDeaths = mortality.records
-        .where((m) => m.batchId == ref)
+        .where((m) => refs.contains(m.batchId))
         .fold(0, (s, m) => s + m.count);
     final batchVacc =
-        vacc.vaccinations.where((v) => v.batchId == ref).toList();
+        vacc.vaccinations.where((v) => refs.contains(v.batchId)).toList();
     final vaccDone = batchVacc.where((v) => v.administeredDate != null).length;
 
     // FCR (layers): kg feed per dozen eggs. A quick efficiency read.

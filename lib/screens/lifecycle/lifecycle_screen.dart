@@ -275,7 +275,7 @@ class LifecycleScreen extends StatelessWidget {
                       type: TransactionType.expense,
                       category: TransactionCategory.birdPurchase,
                       amount: cost,
-                      batchId: batch.name,
+                      batchId: batch.id,
                       description: 'Batch purchase: $id ($count birds)',
                     ),
                   );
@@ -316,7 +316,7 @@ class LifecycleScreen extends StatelessWidget {
       final due = batch.hatchDate.add(Duration(days: t.dayOfAge));
       if (due.isBefore(startOfToday)) continue; // bird already past this age
       vaccinations.add(Vaccination(
-        batchId: batch.name,
+        batchId: batch.id,
         vaccineName: t.name,
         type: t.type,
         scheduledDate: due,
@@ -417,9 +417,9 @@ class LifecycleScreen extends StatelessWidget {
                   initialCost: cost, // 0 = no cost
                   description: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
                 ));
-                // Keep linked records pointing at the renamed batch
+                // Upgrade any legacy name-keyed records to the batch id
                 if (name != oldName) {
-                  _relinkBatchRecords(context, oldName, name);
+                  _relinkBatchRecords(context, oldName, batch.id);
                 }
                 // Mirror the purchase cost into Financials: one Bird
                 // Purchase expense per batch, updated (or removed) to
@@ -440,14 +440,14 @@ class LifecycleScreen extends StatelessWidget {
                       type: TransactionType.expense,
                       category: TransactionCategory.birdPurchase,
                       amount: cost,
-                      batchId: name,
+                      batchId: batch.id,
                       description: desc,
                     ));
                   } else if (purchases.first.amount != cost ||
-                      purchases.first.batchId != name) {
+                      purchases.first.batchId != batch.id) {
                     fin.updateTransaction(purchases.first.copyWith(
                       amount: cost,
-                      batchId: name,
+                      batchId: batch.id,
                       category: TransactionCategory.birdPurchase,
                       description: desc,
                     ));
@@ -472,9 +472,9 @@ class LifecycleScreen extends StatelessWidget {
     );
   }
 
-  /// After a batch is renamed, updates all records that referenced the
-  /// old name so they stay linked (vaccinations, feed, eggs, mortality,
-  /// transactions all store the batch name as their ref).
+  /// Records reference batches by ID, so renames need no relinking —
+  /// except LEGACY rows (from app versions that stored the batch name),
+  /// which this upgrades to the batch id whenever the name changes.
   void _relinkBatchRecords(BuildContext context, String oldName, String newName) {
     final vaccProvider = context.read<VaccinationProvider>();
     for (final v in vaccProvider.getVaccinationsForBatch(oldName)) {

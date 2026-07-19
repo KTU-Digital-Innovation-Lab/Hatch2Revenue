@@ -43,7 +43,7 @@ class DatabaseService {
     final path = join(dbPath, filePath);
     return await openDatabase(
       path,
-      version: 8,
+      version: 9,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
@@ -276,6 +276,37 @@ class DatabaseService {
       }
       // Rebuilds drop secondary indexes with the old tables — restore.
       await _createIndexes(db);
+    }
+    if (oldVersion < 9) {
+      // v9: children now reference batches by ID, not display name.
+      // Name-keyed references broke on rename races (an offline worker
+      // logging against a name the owner just changed orphans the row).
+      // Convert every child row whose batchId matches a batch NAME to
+      // that batch's id, bump updatedAt so LWW propagates, and queue
+      // the rows for upload. 'All' and unknown refs stay as-is.
+      const childTables = [
+        'vaccinations',
+        'feed_records',
+        'egg_production',
+        'mortality',
+        'financial_transactions',
+      ];
+      final now = DateTime.now().toIso8601String();
+      await db.transaction((txn) async {
+        for (final table in childTables) {
+          await txn.execute('''
+            UPDATE $table SET
+              batchId = (SELECT b.id FROM batches b WHERE b.name = $table.batchId),
+              updatedAt = ?
+            WHERE EXISTS (SELECT 1 FROM batches b WHERE b.name = $table.batchId)
+          ''', [now]);
+          await txn.execute('''
+            INSERT OR REPLACE INTO sync_outbox (tableName, rowId, queuedAt)
+            SELECT ?, id, ? FROM $table
+            WHERE batchId IN (SELECT id FROM batches)
+          ''', [table, now]);
+        }
+      });
     }
   }
 

@@ -39,6 +39,11 @@ class CsvExportService {
     final dir = Directory('${docs.path}${Platform.pathSeparator}hatch2revenue_export_$stamp');
     await dir.create(recursive: true);
 
+    // Records reference batches by id — export the human name instead.
+    final batchName = {for (final b in batches) b.id: b.name};
+    String batchRef(String? ref) =>
+        ref == null ? '' : (batchName[ref] ?? ref);
+
     await _write(dir, 'batches.csv', [
       _row(['Batch ID', 'Breed', 'Stage', 'Initial Birds', 'Current Birds', 'Hatch Date', 'Purchase Cost', 'Notes']),
       ...batches.map((b) => _row([
@@ -57,7 +62,7 @@ class CsvExportService {
       _row(['Vaccine', 'Batch', 'Type', 'Scheduled', 'Administered', 'Status', 'Route/Unit', 'Notes']),
       ...vaccinations.map((v) => _row([
             v.vaccineName,
-            v.batchId,
+            batchRef(v.batchId),
             v.typeName,
             _date.format(v.scheduledDate),
             v.administeredDate != null ? _date.format(v.administeredDate!) : '',
@@ -71,7 +76,7 @@ class CsvExportService {
       _row(['Date', 'Batch', 'Feed Type', 'Bags', 'Total Kg', 'Cost', 'Supplier', 'Notes']),
       ...feedRecords.map((r) => _row([
             _date.format(r.date),
-            r.batchId,
+            batchRef(r.batchId),
             r.feedTypeName,
             Units.bagShort(r.totalKg),
             r.totalKg,
@@ -85,7 +90,7 @@ class CsvExportService {
       _row(['Date', 'Batch', 'Crates', 'Eggs', 'Damaged', 'Price/Crate', 'Revenue', 'Notes']),
       ...eggRecords.map((e) => _row([
             _date.format(e.date),
-            e.batchId,
+            batchRef(e.batchId),
             Units.crateShort(e.eggCount),
             e.eggCount,
             e.damagedCount,
@@ -112,7 +117,7 @@ class CsvExportService {
       _row(['Date', 'Batch', 'Deaths', 'Cause', 'Notes']),
       ...mortalityRecords.map((m) => _row([
             _date.format(m.date),
-            m.batchId,
+            batchRef(m.batchId),
             m.count,
             m.causeName,
             m.notes,
@@ -126,7 +131,7 @@ class CsvExportService {
             t.type == TransactionType.income ? 'Income' : 'Expense',
             t.categoryName,
             t.amount,
-            t.batchId,
+            batchRef(t.batchId),
             t.description,
           ])),
     ]);

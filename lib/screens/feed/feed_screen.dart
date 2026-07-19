@@ -235,18 +235,22 @@ class _FeedScreenState extends State<FeedScreen> {
 
   Widget _logsTable(BuildContext context, List<FeedRecord> records, FeedProvider provider) {
     final sorted = [...records]..sort((a, b) => b.date.compareTo(a.date));
+    final bp = context.read<BatchProvider>();
     return HtmlTable(
       headers: ['Date', 'Amount (bags)', 'Type', 'Batch', ''],
-      rows: sorted.map((r) => [
+      rows: sorted.map((r) {
+        final label = bp.batchLabel(r.batchId);
+        return [
         Text(DateFormat('d MMM yyyy').format(r.date), style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
         Text('${Units.bagShort(r.totalKg)} bags', style: GoogleFonts.inter(color: AppColors.cyan, fontWeight: FontWeight.w500, fontSize: 12)),
         Text(r.feedTypeName, style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11)),
-        Text(r.batchId.length > 8 ? r.batchId.substring(0, 8) : r.batchId, style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
+        Text(label.length > 12 ? '${label.substring(0, 12)}…' : label, style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
         Row(mainAxisSize: MainAxisSize.min, children: [
           EditBtn(onTap: () => _showEditDialog(context, r, provider)),
           DelBtn(onTap: () => provider.removeRecord(r.id)),
         ]),
-      ]).toList(),
+      ];
+      }).toList(),
     );
   }
 
@@ -408,8 +412,10 @@ class _FeedScreenState extends State<FeedScreen> {
     final typeCtrl   = TextEditingController();
     final costCtrl   = TextEditingController();
     final batches = context.read<BatchProvider>().batches;
-    final batchOptions = [...batches.map((b) => b.name), 'All'];
-    String selectedBatch = batchOptions.first;
+    // Records reference batches by ID; 'All' means the whole flock.
+    final batchOptions = {for (final b in batches) b.id: b.name, 'All': 'All'};
+    String selectedBatch = batchOptions.keys.first;
+    DateTime selectedDate = DateTime.now();
 
     // Owner-priced catalog: when the farm has official prices, the
     // worker picks a feed and enters BAGS — the cost is computed from
@@ -426,7 +432,20 @@ class _FeedScreenState extends State<FeedScreen> {
           title: const Text('Log Daily Feed Consumption'),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              HtmlFormField(label: 'Date', child: HtmlDateTile(date: DateTime.now())),
+              HtmlFormField(
+                label: 'Date',
+                child: HtmlDateTile(
+                  date: selectedDate,
+                  onTap: () async {
+                    final d = await showDatePicker(
+                        context: ctx,
+                        initialDate: selectedDate,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime.now());
+                    if (d != null) ss(() => selectedDate = d);
+                  },
+                ),
+              ),
               const SizedBox(height: 12),
               if (useCatalog) ...[
                 HtmlFormField(
@@ -515,9 +534,9 @@ class _FeedScreenState extends State<FeedScreen> {
                   dropdownColor: AppColors.surfaceLight,
                   style: TextStyle(color: AppColors.textPrimary),
                   decoration: htmlInputDec(),
-                  items: batchOptions.map((b) => DropdownMenuItem(
-                    value: b,
-                    child: Text(b, style: TextStyle(color: AppColors.textPrimary)),
+                  items: batchOptions.entries.map((e) => DropdownMenuItem(
+                    value: e.key,
+                    child: Text(e.value, style: TextStyle(color: AppColors.textPrimary)),
                   )).toList(),
                   onChanged: (v) => ss(() => selectedBatch = v ?? selectedBatch),
                 ),
@@ -551,7 +570,7 @@ class _FeedScreenState extends State<FeedScreen> {
                   bagsUsed: 1,
                   kgPerBag: kg,
                   unitPricePerBag: cost,
-                  date: DateTime.now(),
+                  date: selectedDate,
                 );
                 feedProvider.addRecord(record);
 
@@ -559,7 +578,7 @@ class _FeedScreenState extends State<FeedScreen> {
                 if (cost > 0) {
                   context.read<FinancialProvider>().addTransaction(
                     FinancialTransaction(
-                      date: DateTime.now(),
+                      date: selectedDate,
                       type: TransactionType.expense,
                       category: TransactionCategory.feed,
                       amount: cost,
