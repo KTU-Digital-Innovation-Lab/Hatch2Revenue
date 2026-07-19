@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../services/sync_service.dart';
 import '../../utils/app_colors.dart';
 import '../feed/feed_prices_screen.dart';
@@ -114,6 +117,54 @@ class _FarmCardState extends State<FarmCard>
           ? 'You are in!'
           : 'Request sent — the farm owner must approve you before '
               'any farm records become visible.');
+    });
+  }
+
+  Widget _codeAction({
+    required IconData icon,
+    required String tooltip,
+    VoidCallback? onTap,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(6),
+          child: Icon(icon, size: 18, color: AppColors.textSecondary),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _promptRotate() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('New invite code?'),
+        content: Text(
+          'The current code stops working immediately — anyone you have '
+          'already approved keeps their access. Share the new code with '
+          'future workers.',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Generate New Code'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await _run(() async {
+      final code = await context.read<SyncService>().rotateInviteCode();
+      _toast('New invite code: $code');
     });
   }
 
@@ -243,11 +294,63 @@ class _FarmCardState extends State<FarmCard>
               ),
             ),
             if (m.isOwner && m.inviteCode != null) ...[
-              const SizedBox(height: 6),
-              Text(
-                'Invite code: ${m.inviteCode}  ·  share it with your team',
-                style:
-                    TextStyle(color: AppColors.textSecondary, fontSize: 12),
+              const SizedBox(height: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceLight,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: Row(
+                  children: [
+                    Text('Invite code',
+                        style: TextStyle(
+                            color: AppColors.textSecondary, fontSize: 11)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        m.inviteCode!,
+                        style: GoogleFonts.inter(
+                          color: AppColors.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 2.5,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    _codeAction(
+                      icon: Icons.copy_outlined,
+                      tooltip: 'Copy code',
+                      onTap: () async {
+                        await Clipboard.setData(
+                            ClipboardData(text: m.inviteCode!));
+                        _toast('Invite code copied');
+                      },
+                    ),
+                    _codeAction(
+                      icon: Icons.share_outlined,
+                      tooltip: 'Share invite',
+                      onTap: () => SharePlus.instance.share(ShareParams(
+                        subject: 'Join ${m.farmName} on Hatch2Revenue',
+                        text: 'Join my farm "${m.farmName}" on Hatch2Revenue!\n\n'
+                            '1. Install the Hatch2Revenue app\n'
+                            '2. Create your account (Farm Profile → Sign up)\n'
+                            '3. Open Farm Profile → My Farm → Join Farm\n'
+                            '4. Enter this invite code: ${m.inviteCode}\n\n'
+                            'I will approve you from my side — then everything '
+                            'you record syncs to the farm.',
+                      )),
+                    ),
+                    _codeAction(
+                      icon: Icons.autorenew,
+                      tooltip: 'New code',
+                      onTap: _busy ? null : _promptRotate,
+                    ),
+                  ],
+                ),
               ),
             ],
             const SizedBox(height: 14),

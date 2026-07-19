@@ -336,6 +336,27 @@ class SyncService extends ChangeNotifier {
     return data['status'] as String;
   }
 
+  /// Owner-only: invalidates the current invite code and returns a
+  /// fresh dictation-friendly one. Approved members keep their access.
+  /// Requires supabase/h2r_invite_codes.sql applied on the server.
+  Future<String> rotateInviteCode() async {
+    _requireSupabase();
+    if (!isSignedIn) throw Exception('Sign in first.');
+    try {
+      final code = await Supabase.instance.client
+          .rpc('h2r_rotate_invite_code') as String;
+      await refreshMembership();
+      return code;
+    } on PostgrestException catch (e) {
+      if (e.message.contains('h2r_rotate_invite_code')) {
+        throw Exception(
+            'Server update needed: run supabase/h2r_invite_codes.sql '
+            'in the Supabase SQL editor, then try again.');
+      }
+      rethrow;
+    }
+  }
+
   Future<List<FarmMember>> listMembers() async {
     _requireSupabase();
     final m = _membership;
