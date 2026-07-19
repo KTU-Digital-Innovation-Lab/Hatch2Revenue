@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/feed_catalog_item.dart';
 import 'database_service.dart';
+import 'notification_service.dart';
 import 'supabase_config.dart';
 
 /// The caller's farm membership as the server sees it.
@@ -298,6 +299,7 @@ class SyncService extends ChangeNotifier {
       return;
     }
     final wasApproved = _membership?.isApproved ?? false;
+    final wasPending = _membership?.status == 'pending';
     final m = FarmMembership(
       farmId: data['farm_id'] as String,
       farmName: data['farm_name'] as String,
@@ -313,6 +315,53 @@ class SyncService extends ChangeNotifier {
         await _db.enqueueAllExisting();
         await refreshPendingCount();
       }
+      if (wasPending) {
+        // The wait is over — tell the worker without them having to
+        // keep tapping "Check Approval".
+        NotificationService().showNotification(
+          id: 910001,
+          title: 'You are approved!',
+          body: 'Welcome to "${m.farmName}" — your records now sync '
+              'with the farm.',
+        );
+      }
+    }
+  }
+
+  /// Owner-side: raises a notification when someone new is waiting to
+  /// join. Runs every sync; remembers who was already pending so each
+  /// request notifies exactly once.
+  Future<void> _notifyNewJoinRequests() async {
+    final m = _membership;
+    if (m == null || !m.isOwner || !m.isApproved) return;
+    try {
+      final members = await listMembers();
+      final pending =
+          members.where((x) => x.status == 'pending').toList();
+      final pendingIds = pending.map((x) => x.userId).toList()..sort();
+      final known = (await _db.getMeta('known_pending_members') ?? '')
+          .split(',')
+          .where((s) => s.isNotEmpty)
+          .toSet();
+      final fresh =
+          pending.where((x) => !known.contains(x.userId)).toList();
+      if (fresh.isNotEmpty) {
+        NotificationService().showNotification(
+          id: 910002,
+          title: fresh.length == 1
+              ? 'Join request'
+              : '${fresh.length} join requests',
+          body: fresh.length == 1
+              ? '${fresh.first.email} wants to join "${m.farmName}" — '
+                  'open Team to approve.'
+              : '${fresh.length} people are waiting to join '
+                  '"${m.farmName}" — open Team to approve.',
+        );
+      }
+      await _db.setMeta('known_pending_members', pendingIds.join(','));
+    } catch (e) {
+      // Best-effort — never let the notifier break a sync.
+      debugPrint('SyncService: join-request check failed: $e');
     }
   }
 
@@ -435,6 +484,7 @@ class SyncService extends ChangeNotifier {
     try {
       // Approval status or prices may have changed since last sync.
       await refreshMembership();
+      await _notifyNewJoinRequests();
 
       final pushed = await _push();
       final pulled = await _pull();
