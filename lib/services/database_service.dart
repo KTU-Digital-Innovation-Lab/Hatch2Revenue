@@ -43,7 +43,7 @@ class DatabaseService {
     final path = join(dbPath, filePath);
     return await openDatabase(
       path,
-      version: 7,
+      version: 8,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
@@ -210,6 +210,73 @@ class DatabaseService {
         await db.execute('ALTER TABLE egg_production ADD COLUMN period TEXT');
       }
     }
+    if (oldVersion < 8) {
+      // v8: heal fresh-v7 installs, whose onCreate schema broke saving.
+      //
+      // batchId holds the batch NAME (or 'All'), never batches.id — the
+      // FOREIGN KEY (batchId) REFERENCES batches(id) clauses that fresh
+      // installs got made every feed/vaccination/transaction insert fail
+      // with enforcement on. Rebuild those tables without the FK.
+      await _rebuildTable(db, 'vaccinations', '''
+        CREATE TABLE vaccinations (
+          id TEXT PRIMARY KEY,
+          batchId TEXT NOT NULL,
+          vaccineName TEXT NOT NULL DEFAULT '',
+          type INTEGER NOT NULL DEFAULT 0,
+          scheduledDate TEXT NOT NULL DEFAULT '',
+          administeredDate TEXT,
+          status INTEGER NOT NULL DEFAULT 0,
+          dosage REAL,
+          unit TEXT,
+          administeredBy TEXT,
+          notes TEXT,
+          reminderEnabled INTEGER NOT NULL DEFAULT 0,
+          reminderDaysBefore INTEGER NOT NULL DEFAULT 1,
+          createdAt TEXT NOT NULL DEFAULT '',
+          updatedAt TEXT NOT NULL DEFAULT '',
+          deletedAt TEXT
+        )
+      ''');
+      await _rebuildTable(db, 'feed_records', '''
+        CREATE TABLE feed_records (
+          id TEXT PRIMARY KEY,
+          batchId TEXT NOT NULL,
+          date TEXT NOT NULL DEFAULT '',
+          feedType INTEGER NOT NULL DEFAULT 0,
+          bagsUsed INTEGER NOT NULL DEFAULT 0,
+          kgPerBag REAL NOT NULL DEFAULT 50.0,
+          unitPricePerBag REAL NOT NULL DEFAULT 0,
+          supplier TEXT,
+          batchNumber TEXT,
+          notes TEXT,
+          createdAt TEXT NOT NULL DEFAULT '',
+          updatedAt TEXT NOT NULL DEFAULT '',
+          deletedAt TEXT
+        )
+      ''');
+      await _rebuildTable(db, 'financial_transactions', '''
+        CREATE TABLE financial_transactions (
+          id TEXT PRIMARY KEY,
+          date TEXT NOT NULL DEFAULT '',
+          type INTEGER NOT NULL DEFAULT 0,
+          category INTEGER NOT NULL DEFAULT 0,
+          amount REAL NOT NULL DEFAULT 0,
+          description TEXT,
+          batchId TEXT,
+          createdAt TEXT NOT NULL DEFAULT '',
+          updatedAt TEXT NOT NULL DEFAULT '',
+          deletedAt TEXT
+        )
+      ''');
+      // Fresh-v7 installs also missed the period column (onCreate lacked
+      // it and the v7 ALTER never ran for them).
+      final eggInfo = await db.rawQuery('PRAGMA table_info(egg_production)');
+      if (!eggInfo.any((c) => c['name'] == 'period')) {
+        await db.execute('ALTER TABLE egg_production ADD COLUMN period TEXT');
+      }
+      // Rebuilds drop secondary indexes with the old tables — restore.
+      await _createIndexes(db);
+    }
   }
 
   Future<void> _createCatalogTable(DatabaseExecutor db) async {
@@ -261,8 +328,7 @@ class DatabaseService {
         reminderDaysBefore INTEGER NOT NULL,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL,
-        deletedAt TEXT,
-        FOREIGN KEY (batchId) REFERENCES batches (id)
+        deletedAt TEXT
       )
     ''');
 
@@ -280,8 +346,7 @@ class DatabaseService {
         notes TEXT,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL,
-        deletedAt TEXT,
-        FOREIGN KEY (batchId) REFERENCES batches (id)
+        deletedAt TEXT
       )
     ''');
 
@@ -322,6 +387,7 @@ class DatabaseService {
         eggCount INTEGER NOT NULL,
         damagedCount INTEGER NOT NULL DEFAULT 0,
         pricePerEgg REAL NOT NULL DEFAULT 0,
+        period TEXT,
         notes TEXT,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL,
@@ -340,8 +406,7 @@ class DatabaseService {
         batchId TEXT,
         createdAt TEXT NOT NULL,
         updatedAt TEXT NOT NULL,
-        deletedAt TEXT,
-        FOREIGN KEY (batchId) REFERENCES batches (id)
+        deletedAt TEXT
       )
     ''');
 

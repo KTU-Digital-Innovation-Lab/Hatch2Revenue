@@ -460,8 +460,11 @@ class _StatCard extends StatelessWidget {
     // A single Border can't mix borderRadius with non-uniform side colors
     // (Flutter throws "A borderRadius can only be given on borders with
     // uniform colors" at paint time), so the colored top accent is layered
-    // on top of a plain rounded/uniform-border container instead.
-    return Stack(
+    // on top of a plain rounded/uniform-border container instead. The
+    // ClipRRect trims the bar's ends to the card's rounded corners.
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Stack(
       children: [
         Positioned.fill(
           child: Container(
@@ -503,18 +506,10 @@ class _StatCard extends StatelessWidget {
           top: 0,
           left: 0,
           right: 0,
-          child: Container(
-            height: 3,
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(10),
-                topRight: Radius.circular(10),
-              ),
-            ),
-          ),
+          child: Container(height: 3, color: color),
         ),
       ],
+      ),
     );
   }
 }

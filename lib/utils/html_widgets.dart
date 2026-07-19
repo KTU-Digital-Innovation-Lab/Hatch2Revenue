@@ -28,7 +28,11 @@ class KpiCard extends StatelessWidget {
     // KpiCard is only ever used inside KpiGrid's tight GridView cells, so a
     // non-positioned child here would shrink to its content instead of
     // filling the cell, leaving the accent bar wider than the box below it.
-    return Stack(
+    // The ClipRRect trims the accent bar's ends to the card's rounded
+    // corners (a 2px-tall box can't render a 14px radius itself).
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: Stack(
       children: [
         Positioned.fill(
           child: Container(
@@ -77,18 +81,10 @@ class KpiCard extends StatelessWidget {
           top: 0,
           left: 0,
           right: 0,
-          child: Container(
-            height: 2,
-            decoration: BoxDecoration(
-              color: accentColor,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(14),
-                topRight: Radius.circular(14),
-              ),
-            ),
-          ),
+          child: Container(height: 2, color: accentColor),
         ),
       ],
+      ),
     );
   }
 }

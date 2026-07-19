@@ -170,19 +170,34 @@ class _MiniStat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(10),
-        border: Border(top: BorderSide(color: color, width: 3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+    // Accent bar overlays a plain rounded card; the ClipRRect trims its
+    // ends to the card's corner radius so the two blend seamlessly.
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(10),
+      child: Stack(
         children: [
-          Text(label, style: TextStyle(color: AppColors.textSecondary, fontSize: 9, letterSpacing: 0.8)),
-          const SizedBox(height: 4),
-          Text(value, style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(12, 13, 12, 10),
+            decoration: BoxDecoration(
+              color: AppColors.surface,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: TextStyle(color: AppColors.textSecondary, fontSize: 9, letterSpacing: 0.8)),
+                const SizedBox(height: 4),
+                Text(value, style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: Container(height: 3, color: color),
+          ),
         ],
       ),
     );
