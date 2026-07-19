@@ -271,7 +271,7 @@ class LifecycleScreen extends StatelessWidget {
                     FinancialTransaction(
                       date: selectedEntryDate,
                       type: TransactionType.expense,
-                      category: TransactionCategory.other,
+                      category: TransactionCategory.birdPurchase,
                       amount: cost,
                       batchId: batch.name,
                       description: 'Batch purchase: $id ($count birds)',
@@ -344,6 +344,8 @@ class LifecycleScreen extends StatelessWidget {
     final nameCtrl  = TextEditingController(text: batch.name);
     final breedCtrl = TextEditingController(text: batch.source ?? '');
     final countCtrl = TextEditingController(text: '${batch.currentCount}');
+    final costCtrl  = TextEditingController(
+        text: (batch.initialCost ?? 0) > 0 ? batch.initialCost!.toStringAsFixed(0) : '');
     final notesCtrl = TextEditingController(text: batch.description ?? '');
     BatchType selectedType = batch.type;
     DateTime selectedHatchDate = batch.hatchDate;
@@ -373,6 +375,11 @@ class LifecycleScreen extends StatelessWidget {
               HtmlFormField(label: 'Current Bird Count', child: TextField(controller: countCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Count'))),
               const SizedBox(height: 12),
               HtmlFormField(
+                label: 'Purchase Cost (${CurrencyFormatter.currencySymbol}) — optional',
+                child: TextField(controller: costCtrl, keyboardType: const TextInputType.numberWithOptions(decimal: true), style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Auto-logged as Bird Purchase expense')),
+              ),
+              const SizedBox(height: 12),
+              HtmlFormField(
                 label: 'Stage',
                 child: DropdownButtonFormField<BatchType>(
                   initialValue: selectedType,
@@ -397,6 +404,7 @@ class LifecycleScreen extends StatelessWidget {
                 final name  = nameCtrl.text.trim();
                 final count = int.tryParse(countCtrl.text) ?? 0;
                 if (name.isEmpty || count <= 0) return;
+                final cost  = double.tryParse(costCtrl.text.trim()) ?? 0;
                 final oldName = batch.name;
                 context.read<BatchProvider>().updateBatch(batch.copyWith(
                   name: name,
@@ -404,11 +412,48 @@ class LifecycleScreen extends StatelessWidget {
                   currentCount: count,
                   type: selectedType,
                   hatchDate: selectedHatchDate,
+                  initialCost: cost, // 0 = no cost
                   description: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
                 ));
                 // Keep linked records pointing at the renamed batch
                 if (name != oldName) {
                   _relinkBatchRecords(context, oldName, name);
+                }
+                // Mirror the purchase cost into Financials: one Bird
+                // Purchase expense per batch, updated (or removed) to
+                // match whatever the owner typed here.
+                final fin = context.read<FinancialProvider>();
+                final refs = {batch.id, oldName, name};
+                final purchases = fin.transactions
+                    .where((t) =>
+                        refs.contains(t.batchId) &&
+                        (t.category == TransactionCategory.birdPurchase ||
+                            (t.description ?? '').startsWith('Batch purchase:')))
+                    .toList();
+                if (cost > 0) {
+                  final desc = 'Batch purchase: $name ($count birds)';
+                  if (purchases.isEmpty) {
+                    fin.addTransaction(FinancialTransaction(
+                      date: DateTime.now(),
+                      type: TransactionType.expense,
+                      category: TransactionCategory.birdPurchase,
+                      amount: cost,
+                      batchId: name,
+                      description: desc,
+                    ));
+                  } else if (purchases.first.amount != cost ||
+                      purchases.first.batchId != name) {
+                    fin.updateTransaction(purchases.first.copyWith(
+                      amount: cost,
+                      batchId: name,
+                      category: TransactionCategory.birdPurchase,
+                      description: desc,
+                    ));
+                  }
+                } else {
+                  for (final t in purchases) {
+                    fin.removeTransaction(t.id);
+                  }
                 }
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(

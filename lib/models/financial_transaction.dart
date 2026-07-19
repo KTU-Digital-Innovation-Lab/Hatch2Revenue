@@ -11,6 +11,9 @@ enum TransactionCategory {
   equipment,
   utilities,
   other,
+  // Appended last: the category index is persisted in SQLite/cloud rows,
+  // so existing data depends on the order above never changing.
+  birdPurchase,
 }
 
 class FinancialTransaction {
@@ -56,6 +59,8 @@ class FinancialTransaction {
         return 'Utilities';
       case TransactionCategory.other:
         return 'Other';
+      case TransactionCategory.birdPurchase:
+        return 'Bird Purchase';
     }
   }
 
