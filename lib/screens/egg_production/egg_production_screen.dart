@@ -362,6 +362,9 @@ class EggProductionScreen extends StatelessWidget {
                     type: TransactionType.income,
                     category: TransactionCategory.eggSales,
                     amount: saleValue,
+                    // Linked to the batch so deleting the batch also
+                    // removes its egg income.
+                    batchId: selectedBatch,
                     description: 'Egg sales: ${Units.crateLabel(count - damaged)} @ ${CurrencyFormatter.currencySymbol}${pricePerCrate.toStringAsFixed(0)}/crate',
                   ),
                 );

@@ -452,12 +452,31 @@ class LifecycleScreen extends StatelessWidget {
   }
 
   void _confirmDelete(BuildContext context, Batch batch, BatchProvider provider) {
+    // Itemise the blast radius so the owner confirms with full knowledge
+    // of exactly what goes with the batch.
+    final refs = {batch.id, batch.name};
+    String plural(int n, String one, String many) => '$n ${n == 1 ? one : many}';
+    final eggs = context.read<EggProductionProvider>().records.where((r) => refs.contains(r.batchId)).length;
+    final feed = context.read<FeedProvider>().records.where((r) => refs.contains(r.batchId)).length;
+    final vacc = context.read<VaccinationProvider>().vaccinations.where((v) => refs.contains(v.batchId)).length;
+    final mort = context.read<MortalityProvider>().records.where((r) => refs.contains(r.batchId)).length;
+    final txns = context.read<FinancialProvider>().transactions.where((t) => refs.contains(t.batchId)).length;
+    final parts = <String>[
+      if (eggs > 0) plural(eggs, 'egg log', 'egg logs'),
+      if (feed > 0) plural(feed, 'feed log', 'feed logs'),
+      if (vacc > 0) plural(vacc, 'vaccination', 'vaccinations'),
+      if (mort > 0) plural(mort, 'mortality record', 'mortality records'),
+      if (txns > 0) plural(txns, 'transaction', 'transactions'),
+    ];
+    final detail = parts.isEmpty
+        ? 'No other records are linked to this batch.'
+        : 'This will ALSO permanently delete:\n•  ${parts.join('\n•  ')}';
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Batch'),
+        title: const Text('Delete Batch?'),
         content: Text(
-          'Delete "${batch.name}"?\n\nAll vaccinations, feed logs, egg logs, mortality records and transactions linked to this batch will also be deleted.',
+          'Delete "${batch.name}" (${batch.currentCount} birds)?\n\n$detail',
           style: TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
@@ -465,7 +484,6 @@ class LifecycleScreen extends StatelessWidget {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.red, foregroundColor: Colors.white),
             onPressed: () {
-              final refs = {batch.id, batch.name};
               context.read<VaccinationProvider>().removeByBatchRefs(refs);
               context.read<FeedProvider>().removeByBatchRefs(refs);
               context.read<EggProductionProvider>().removeByBatchRefs(refs);
