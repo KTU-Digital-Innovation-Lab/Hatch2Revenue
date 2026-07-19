@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -26,9 +27,24 @@ class PdfReportService {
     final pdf = pw.Document();
     final date = DateFormat('d MMMM yyyy').format(DateTime.now());
 
+    // Embed the bundled Inter font: the PDF default (Helvetica) has no
+    // Ghana cedi glyph (₵ U+20B5), so amounts printed as garbage. Inter
+    // carries the glyph (Poppins doesn't) and matches the app's body font.
+    final interRegular =
+        pw.Font.ttf(await rootBundle.load('google_fonts/Inter-Regular.ttf'));
+    final interBold =
+        pw.Font.ttf(await rootBundle.load('google_fonts/Inter-Bold.ttf'));
+    final theme = pw.ThemeData.withFont(
+      base: interRegular,
+      bold: interBold,
+      italic: interRegular,
+      boldItalic: interBold,
+    );
+
     pdf.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
+        theme: theme,
         margin: const pw.EdgeInsets.all(40),
         header: (ctx) => pw.Column(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
