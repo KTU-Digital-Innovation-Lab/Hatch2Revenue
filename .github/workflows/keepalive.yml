@@ -1,0 +1,21 @@
+# Pings the Supabase project twice a week so the free tier never hits
+# its 7-idle-days auto-pause (a paused project drops off DNS and the
+# app reports "no internet"). The publishable key below is the same
+# public anon key already shipped inside the app — not a secret.
+name: Supabase keep-alive
+
+on:
+  schedule:
+    - cron: '17 6 * * 1,4' # Mondays & Thursdays, 06:17 UTC
+  workflow_dispatch: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API
+        run: |
+          curl -sf --max-time 30 \
+            -H "apikey: sb_publishable_seuWLwJGKLFOIcs-i2HiEQ_RPjnrT2D" \
+            "https://natotrarjgglxionrabw.supabase.co/rest/v1/" -o /dev/null
+          echo "Supabase project pinged — staying awake."
