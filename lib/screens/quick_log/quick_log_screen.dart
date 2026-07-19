@@ -35,7 +35,6 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
   final _crates = TextEditingController();
   final _loose = TextEditingController();
   final _damaged = TextEditingController();
-  final _pricePerCrate = TextEditingController();
 
   final _bags = TextEditingController();
   final _feedCost = TextEditingController();
@@ -47,7 +46,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
 
   @override
   void dispose() {
-    for (final c in [_crates, _loose, _damaged, _pricePerCrate, _bags, _feedCost, _deaths]) {
+    for (final c in [_crates, _loose, _damaged, _bags, _feedCost, _deaths]) {
       c.dispose();
     }
     super.dispose();
@@ -66,7 +65,6 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
     final loose = int.tryParse(_loose.text.trim()) ?? 0;
     final eggCount = (crates * Units.eggsPerCrate).round() + loose;
     final damaged = int.tryParse(_damaged.text.trim()) ?? 0;
-    final pricePerCrate = double.tryParse(_pricePerCrate.text.trim()) ?? 0;
     final bags = double.tryParse(_bags.text.trim()) ?? 0;
     final deaths = int.tryParse(_deaths.text.trim()) ?? 0;
 
@@ -82,31 +80,18 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
     final fin = context.read<FinancialProvider>();
     final parts = <String>[];
 
-    // --- Eggs ---
+    // --- Eggs (production only — income books at SALE time) ---
     if (eggCount > 0) {
       final h = DateTime.now().hour;
       final period = h < 12 ? 'Morning' : (h < 16 ? 'Afternoon' : 'Evening');
-      final pricePerEgg = pricePerCrate / Units.eggsPerCrate;
       context.read<EggProductionProvider>().addRecord(EggProduction(
             batchId: _batch,
             date: _date,
             eggCount: eggCount,
             damagedCount: damaged,
-            pricePerEgg: pricePerEgg,
+            pricePerEgg: 0,
             period: period,
           ));
-      final saleValue = (eggCount - damaged) * pricePerEgg;
-      if (saleValue > 0) {
-        fin.addTransaction(FinancialTransaction(
-          date: _date,
-          type: TransactionType.income,
-          category: TransactionCategory.eggSales,
-          amount: saleValue,
-          batchId: _batch,
-          description:
-              'Egg sales: ${Units.crateLabel(eggCount - damaged)} @ ${CurrencyFormatter.currencySymbol}${pricePerCrate.toStringAsFixed(0)}/crate',
-        ));
-      }
       parts.add(Units.crateLabel(eggCount));
     }
 
@@ -263,13 +248,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
                 Expanded(child: _numField(_loose, 'Loose Eggs', '0–29')),
               ]),
               const SizedBox(height: 12),
-              Row(children: [
-                Expanded(child: _numField(_damaged, 'Damaged (eggs)', 'e.g. 2')),
-                const SizedBox(width: 12),
-                Expanded(child: _numField(_pricePerCrate,
-                    'Price/Crate (${CurrencyFormatter.currencySymbol})', 'optional',
-                    decimal: true)),
-              ]),
+              _numField(_damaged, 'Damaged (eggs)', 'e.g. 2'),
             ]),
           ),
 

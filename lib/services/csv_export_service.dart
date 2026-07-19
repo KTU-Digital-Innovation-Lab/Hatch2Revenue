@@ -4,6 +4,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/batch.dart';
 import '../models/egg_production.dart';
+import '../models/egg_sale.dart';
 import '../models/feed_record.dart';
 import '../models/financial_transaction.dart';
 import '../models/mortality.dart';
@@ -33,6 +34,7 @@ class CsvExportService {
     required List<Mortality> mortalityRecords,
     required List<FinancialTransaction> transactions,
     List<FeedInventory> feedInventory = const [],
+    List<EggSale> eggSales = const [],
   }) async {
     final docs = await getApplicationDocumentsDirectory();
     final stamp = DateFormat('yyyyMMdd_HHmmss').format(DateTime.now());
@@ -121,6 +123,21 @@ class CsvExportService {
             m.count,
             m.causeName,
             m.notes,
+          ])),
+    ]);
+
+    await _write(dir, 'egg_sales.csv', [
+      _row(['Date', 'Buyer', 'Crates', 'Eggs', 'Price/Crate', 'Total', 'Paid', 'Owed', 'Notes']),
+      ...eggSales.map((s) => _row([
+            _date.format(s.date),
+            s.buyer,
+            Units.crateShort(s.eggCount),
+            s.eggCount,
+            (s.pricePerEgg * Units.eggsPerCrate).toStringAsFixed(2),
+            s.total.toStringAsFixed(2),
+            s.amountPaid.toStringAsFixed(2),
+            s.owed.toStringAsFixed(2),
+            s.notes,
           ])),
     ]);
 

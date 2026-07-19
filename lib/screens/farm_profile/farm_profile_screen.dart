@@ -5,6 +5,7 @@ import '../../providers/batch_provider.dart';
 import '../../providers/vaccination_provider.dart';
 import '../../providers/feed_provider.dart';
 import '../../providers/egg_production_provider.dart';
+import '../../providers/egg_sales_provider.dart';
 import '../../providers/mortality_provider.dart';
 import '../../providers/financial_provider.dart';
 import '../../models/farm_profile.dart';
@@ -113,6 +114,7 @@ class _FarmProfileScreenState extends State<FarmProfileScreen> {
         eggRecords: context.read<EggProductionProvider>().records,
         mortalityRecords: context.read<MortalityProvider>().records,
         transactions: context.read<FinancialProvider>().transactions,
+        eggSales: context.read<EggSalesProvider>().sales,
       );
       if (!mounted) return;
       showDialog(

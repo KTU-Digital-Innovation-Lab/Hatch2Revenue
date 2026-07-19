@@ -8,6 +8,7 @@ import 'providers/vaccination_provider.dart';
 import 'providers/feed_provider.dart';
 import 'providers/mortality_provider.dart';
 import 'providers/egg_production_provider.dart';
+import 'providers/egg_sales_provider.dart';
 import 'providers/financial_provider.dart';
 import 'providers/quick_action_provider.dart';
 import 'providers/farm_profile_provider.dart';
@@ -38,6 +39,7 @@ class PoultryApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => FeedProvider()..init()),
         ChangeNotifierProvider(create: (_) => MortalityProvider()..init()),
         ChangeNotifierProvider(create: (_) => EggProductionProvider()..init()),
+        ChangeNotifierProvider(create: (_) => EggSalesProvider()..init()),
         ChangeNotifierProvider(create: (_) => FinancialProvider()..init()),
         ChangeNotifierProvider(create: (_) => QuickActionProvider()),
         ChangeNotifierProvider(create: (_) => FarmProfileProvider()),
@@ -524,7 +526,7 @@ class _MainNavigationState extends State<MainNavigation> {
               border: Border(top: BorderSide(color: AppColors.border)),
             ),
             child: Text(
-              'Hatch2Revenue v1.2.0',
+              'Hatch2Revenue v1.3.0',
               style: GoogleFonts.inter(
                 color: AppColors.textMuted,
                 fontSize: 12,

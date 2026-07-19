@@ -4,8 +4,10 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../models/batch.dart';
 import '../../models/egg_production.dart';
+import '../../models/egg_sale.dart';
 import '../../models/financial_transaction.dart';
 import '../../providers/egg_production_provider.dart';
+import '../../providers/egg_sales_provider.dart';
 import '../../providers/batch_provider.dart';
 import '../../providers/financial_provider.dart';
 import '../../providers/quick_action_provider.dart';
@@ -31,6 +33,11 @@ class EggProductionScreen extends StatelessWidget {
         final logs     = eggProvider.records;
         final total    = eggProvider.totalEggs;
         final damaged  = eggProvider.totalDamagedEggs;
+        // Store = good eggs collected minus eggs sold (never negative).
+        final salesProvider = context.watch<EggSalesProvider>();
+        final store = (total - damaged - salesProvider.totalEggsSold)
+            .clamp(0, 1 << 30);
+        final owed = salesProvider.totalOutstanding;
         // Hen-Day % against birds currently in layer stage (all birds if none).
         final layerBirds = () {
           final layers = batchProvider.batches
@@ -57,12 +64,36 @@ class EggProductionScreen extends StatelessWidget {
               ),
 
               KpiGrid(children: [
+                KpiCard(label: 'In Store', value: Units.crateShort(store), sub: Units.crateLabel(store), accentColor: AppColors.amber),
+                KpiCard(label: 'Owed to You', value: '${CurrencyFormatter.currencySymbol}${owed.toStringAsFixed(0)}', accentColor: owed > 0 ? AppColors.red : AppColors.green),
                 KpiCard(label: 'Total Crates', value: Units.crateShort(total), sub: Units.crateLabel(total), accentColor: AppColors.green),
                 KpiCard(label: 'Damaged (eggs)', value: '$damaged', accentColor: AppColors.red),
-                KpiCard(label: 'HD% (latest)', value: latestHd, accentColor: AppColors.amber),
-                KpiCard(label: 'Days Logged', value: '${logs.length}', accentColor: AppColors.cyan),
+                KpiCard(label: 'HD% (latest)', value: latestHd, accentColor: AppColors.cyan),
+                KpiCard(label: 'Days Logged', value: '${logs.length}', accentColor: AppColors.purple),
               ]),
               const SizedBox(height: 18),
+
+              // Sales & debtors — selling draws down the store; unpaid
+              // balances are tracked per buyer until settled.
+              HtmlCard(
+                header: HtmlCardHeader(
+                  icon: Icons.point_of_sale_outlined,
+                  title: 'Egg Sales & Debtors',
+                  trailing: PrimaryBtn(
+                    label: '+ Sell Eggs',
+                    small: true,
+                    onPressed: () => _showSellDialog(context, store),
+                  ),
+                ),
+                bodyPadding: EdgeInsets.zero,
+                body: salesProvider.sales.isEmpty
+                    ? const HtmlEmptyState(
+                        icon: Icons.point_of_sale_outlined,
+                        message:
+                            'No sales yet. Collections fill your store; record a sale when eggs leave the farm.',
+                      )
+                    : _salesTable(context, salesProvider),
+              ),
 
               HtmlCard(
                 header: HtmlCardHeader(
@@ -201,7 +232,6 @@ class EggProductionScreen extends StatelessWidget {
     final cratesCtrl  = TextEditingController();
     final looseCtrl   = TextEditingController();
     final damagedCtrl = TextEditingController();
-    final priceCtrl   = TextEditingController();
     final notesCtrl   = TextEditingController();
 
     final batches = context.read<BatchProvider>().batches;
@@ -326,11 +356,6 @@ class EggProductionScreen extends StatelessWidget {
               child: TextField(controller: damagedCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. 85')),
             ),
             const SizedBox(height: 12),
-            HtmlFormField(
-              label: 'Price per Crate (${CurrencyFormatter.currencySymbol}) — optional',
-              child: TextField(controller: priceCtrl, keyboardType: const TextInputType.numberWithOptions(decimal: true), style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('Sale value auto-logged as income')),
-            ),
-            const SizedBox(height: 12),
             if (birds > 0 && typedCount > 0)
               Align(
                 alignment: Alignment.centerLeft,
@@ -355,42 +380,21 @@ class EggProductionScreen extends StatelessWidget {
               final count  = (crates * Units.eggsPerCrate).round() + loose;
               if (count <= 0) return;
               final damaged = int.tryParse(damagedCtrl.text.trim()) ?? 0;
-              // Price entered per crate; store per egg so revenue math
-              // (count × pricePerEgg) stays correct.
-              final pricePerCrate = double.tryParse(priceCtrl.text.trim()) ?? 0;
-              final price = pricePerCrate / Units.eggsPerCrate;
+              // Collection is production only — income books when the
+              // eggs are actually SOLD (Egg Sales & Debtors card).
               context.read<EggProductionProvider>().addRecord(EggProduction(
                 batchId: selectedBatch,
                 date: selectedDate,
                 eggCount: count,
                 damagedCount: damaged,
-                pricePerEgg: price,
+                pricePerEgg: 0,
                 period: selectedPeriod,
                 notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
               ));
 
-              // Auto-post the sale value to Financials
-              final saleValue = (count - damaged) * price;
-              if (saleValue > 0) {
-                context.read<FinancialProvider>().addTransaction(
-                  FinancialTransaction(
-                    date: selectedDate,
-                    type: TransactionType.income,
-                    category: TransactionCategory.eggSales,
-                    amount: saleValue,
-                    // Linked to the batch so deleting the batch also
-                    // removes its egg income.
-                    batchId: selectedBatch,
-                    description: 'Egg sales: ${Units.crateLabel(count - damaged)} @ ${CurrencyFormatter.currencySymbol}${pricePerCrate.toStringAsFixed(0)}/crate',
-                  ),
-                );
-              }
-
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text(saleValue > 0
-                    ? 'Egg log saved — income posted to Financials'
-                    : 'Egg log saved'),
+                content: const Text('Egg log saved — eggs added to your store'),
                 backgroundColor: AppColors.green.withValues(alpha: 0.9),
                 behavior: SnackBarBehavior.floating,
               ));
@@ -436,6 +440,216 @@ class EggProductionScreen extends StatelessWidget {
               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Record updated'), backgroundColor: AppColors.cyan, behavior: SnackBarBehavior.floating));
             },
             child: const Text('Save Changes'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── Egg sales & debtors ─────────────────────────────────────────
+
+  Widget _salesTable(BuildContext context, EggSalesProvider provider) {
+    final sym = CurrencyFormatter.currencySymbol;
+    return HtmlTable(
+      headers: ['Date', 'Buyer', 'Crates', 'Total', 'Owed', ''],
+      rows: provider.sales.map((s) {
+        final buyer = s.buyer.length > 12 ? '${s.buyer.substring(0, 12)}…' : s.buyer;
+        return [
+          Text(DateFormat('d MMM').format(s.date), style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
+          Text(buyer, style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11)),
+          Text(Units.crateShort(s.eggCount), style: GoogleFonts.inter(color: AppColors.green, fontWeight: FontWeight.w500, fontSize: 12)),
+          Text('$sym${s.total.toStringAsFixed(0)}', style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11)),
+          s.isPaid
+              ? const TagChip(label: 'Paid', color: AppColors.green)
+              : Text('$sym${s.owed.toStringAsFixed(0)}', style: GoogleFonts.inter(color: AppColors.red, fontWeight: FontWeight.w600, fontSize: 12)),
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            if (!s.isPaid)
+              GestureDetector(
+                onTap: () => _showPaymentDialog(context, s, provider),
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Icon(Icons.payments_outlined, color: AppColors.green, size: 18),
+                ),
+              ),
+            DelBtn(onTap: () => _confirmDeleteSale(context, s, provider)),
+          ]),
+        ];
+      }).toList(),
+    );
+  }
+
+  void _showSellDialog(BuildContext context, int store) {
+    final buyerCtrl  = TextEditingController();
+    final cratesCtrl = TextEditingController();
+    final looseCtrl  = TextEditingController();
+    final priceCtrl  = TextEditingController();
+    final paidCtrl   = TextEditingController();
+    DateTime selectedDate = DateTime.now();
+    final sym = CurrencyFormatter.currencySymbol;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (ctx, ss) {
+        final crates = double.tryParse(cratesCtrl.text.trim()) ?? 0;
+        final loose  = int.tryParse(looseCtrl.text.trim()) ?? 0;
+        final eggs   = (crates * Units.eggsPerCrate).round() + loose;
+        final pricePerCrate = double.tryParse(priceCtrl.text.trim()) ?? 0;
+        final totalValue = eggs / Units.eggsPerCrate * pricePerCrate;
+        return AlertDialog(
+          title: const Text('Sell Eggs'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              HtmlFormField(
+                label: 'Date',
+                child: HtmlDateTile(
+                  date: selectedDate,
+                  onTap: () async {
+                    final d = await showDatePicker(context: ctx, initialDate: selectedDate, firstDate: DateTime(2020), lastDate: DateTime.now());
+                    if (d != null) ss(() => selectedDate = d);
+                  },
+                ),
+              ),
+              const SizedBox(height: 12),
+              HtmlFormField(
+                label: 'Buyer',
+                child: TextField(controller: buyerCtrl, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. Maame Ama — blank for cash sale')),
+              ),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(child: HtmlFormField(label: 'Crates', child: TextField(controller: cratesCtrl, keyboardType: const TextInputType.numberWithOptions(decimal: true), style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. 3'), onChanged: (_) => ss(() {})))),
+                const SizedBox(width: 12),
+                Expanded(child: HtmlFormField(label: 'Loose Eggs', child: TextField(controller: looseCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('0–29'), onChanged: (_) => ss(() {})))),
+              ]),
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text('In store: ${Units.crateLabel(store)}',
+                    style: TextStyle(color: eggs > store ? AppColors.red : AppColors.textSecondary, fontSize: 11)),
+              ),
+              const SizedBox(height: 12),
+              Row(children: [
+                Expanded(child: HtmlFormField(label: 'Price / Crate ($sym)', child: TextField(controller: priceCtrl, keyboardType: const TextInputType.numberWithOptions(decimal: true), style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. 55'), onChanged: (_) => ss(() {})))),
+                const SizedBox(width: 12),
+                Expanded(child: HtmlFormField(label: 'Paid Now ($sym)', child: TextField(controller: paidCtrl, keyboardType: const TextInputType.numberWithOptions(decimal: true), style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('0 = all on credit')))),
+              ]),
+              if (totalValue > 0) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Total: $sym${totalValue.toStringAsFixed(2)}',
+                      style: TextStyle(color: AppColors.amber, fontSize: 13, fontWeight: FontWeight.w700)),
+                ),
+              ],
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
+            ElevatedButton(
+              onPressed: () {
+                if (eggs <= 0 || pricePerCrate <= 0) return;
+                final paid = (double.tryParse(paidCtrl.text.trim()) ?? 0)
+                    .clamp(0.0, eggs / Units.eggsPerCrate * pricePerCrate);
+                final buyer = buyerCtrl.text.trim().isEmpty ? 'Cash sale' : buyerCtrl.text.trim();
+                final sale = EggSale(
+                  date: selectedDate,
+                  buyer: buyer,
+                  eggCount: eggs,
+                  pricePerEgg: pricePerCrate / Units.eggsPerCrate,
+                  amountPaid: paid,
+                );
+                context.read<EggSalesProvider>().addSale(sale);
+                // Cash-basis: only money actually received books as income.
+                if (paid > 0) {
+                  context.read<FinancialProvider>().addTransaction(FinancialTransaction(
+                    date: selectedDate,
+                    type: TransactionType.income,
+                    category: TransactionCategory.eggSales,
+                    amount: paid,
+                    description: 'Egg sale: ${Units.crateLabel(eggs)} to $buyer',
+                  ));
+                }
+                Navigator.pop(ctx);
+                final owedNow = sale.owed;
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(owedNow > 0
+                      ? 'Sale recorded — $buyer owes $sym${owedNow.toStringAsFixed(2)}'
+                      : 'Sale recorded — paid in full'),
+                  backgroundColor: AppColors.green.withValues(alpha: 0.9),
+                  behavior: SnackBarBehavior.floating,
+                ));
+              },
+              child: const Text('Record Sale'),
+            ),
+          ],
+        );
+      }),
+    );
+  }
+
+  void _showPaymentDialog(BuildContext context, EggSale sale, EggSalesProvider provider) {
+    final sym = CurrencyFormatter.currencySymbol;
+    final amtCtrl = TextEditingController(text: sale.owed.toStringAsFixed(2));
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Record Payment'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text('${sale.buyer} owes $sym${sale.owed.toStringAsFixed(2)} '
+                'for ${Units.crateLabel(sale.eggCount)}.',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+          ),
+          const SizedBox(height: 14),
+          HtmlFormField(
+            label: 'Amount Received ($sym)',
+            child: TextField(controller: amtCtrl, keyboardType: const TextInputType.numberWithOptions(decimal: true), style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec()),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
+          ElevatedButton(
+            onPressed: () {
+              final amt = (double.tryParse(amtCtrl.text.trim()) ?? 0).clamp(0.0, sale.owed);
+              if (amt <= 0) return;
+              provider.recordPayment(sale.id, amt);
+              context.read<FinancialProvider>().addTransaction(FinancialTransaction(
+                date: DateTime.now(),
+                type: TransactionType.income,
+                category: TransactionCategory.eggSales,
+                amount: amt,
+                description: 'Egg payment: ${sale.buyer}',
+              ));
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('Payment recorded — $sym${amt.toStringAsFixed(2)} from ${sale.buyer}'),
+                backgroundColor: AppColors.green.withValues(alpha: 0.9),
+                behavior: SnackBarBehavior.floating,
+              ));
+            },
+            child: const Text('Save Payment'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDeleteSale(BuildContext context, EggSale sale, EggSalesProvider provider) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Sale?'),
+        content: Text(
+          'Delete the sale of ${Units.crateLabel(sale.eggCount)} to ${sale.buyer}?\n\n'
+          'The eggs return to your store. Income already received stays in Financials.',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.red, foregroundColor: Colors.white),
+            onPressed: () { provider.removeSale(sale.id); Navigator.pop(ctx); },
+            child: const Text('Delete'),
           ),
         ],
       ),

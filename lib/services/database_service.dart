@@ -43,7 +43,7 @@ class DatabaseService {
     final path = join(dbPath, filePath);
     return await openDatabase(
       path,
-      version: 9,
+      version: 10,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
@@ -308,6 +308,30 @@ class DatabaseService {
         }
       });
     }
+    if (oldVersion < 10) {
+      // v10: egg sales & debtors ledger.
+      await _createEggSalesTable(db);
+    }
+  }
+
+  /// Egg sales & debtors. Local-only for now (NOT in [syncedTables] —
+  /// the cloud has no h2r_egg_sales mirror yet); the income these sales
+  /// generate still syncs via financial_transactions. IF EXISTS guard so
+  /// fresh installs and migrations share one definition.
+  Future<void> _createEggSalesTable(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS egg_sales (
+        id TEXT PRIMARY KEY,
+        date TEXT NOT NULL,
+        buyer TEXT NOT NULL DEFAULT '',
+        eggCount INTEGER NOT NULL DEFAULT 0,
+        pricePerEgg REAL NOT NULL DEFAULT 0,
+        amountPaid REAL NOT NULL DEFAULT 0,
+        notes TEXT,
+        createdAt TEXT NOT NULL DEFAULT '',
+        updatedAt TEXT NOT NULL DEFAULT ''
+      )
+    ''');
   }
 
   Future<void> _createCatalogTable(DatabaseExecutor db) async {
@@ -444,6 +468,7 @@ class DatabaseService {
     await _createSyncTables(db);
     await _createIndexes(db);
     await _createCatalogTable(db);
+    await _createEggSalesTable(db);
   }
 
   // ---------------------------------------------------------------
@@ -681,6 +706,27 @@ class DatabaseService {
 
   Future<void> deleteEggProduction(String id) =>
       _softDeleteSynced('egg_production', id);
+
+  // Egg Sales CRUD (local-only — plain writes, no sync outbox)
+  Future<void> insertEggSale(Map<String, dynamic> sale) async {
+    final db = await database;
+    await db.insert('egg_sales', sale);
+  }
+
+  Future<List<Map<String, dynamic>>> getAllEggSales() async {
+    final db = await database;
+    return db.query('egg_sales', orderBy: 'date DESC');
+  }
+
+  Future<void> updateEggSale(Map<String, dynamic> sale) async {
+    final db = await database;
+    await db.update('egg_sales', sale, where: 'id = ?', whereArgs: [sale['id']]);
+  }
+
+  Future<void> deleteEggSale(String id) async {
+    final db = await database;
+    await db.delete('egg_sales', where: 'id = ?', whereArgs: [id]);
+  }
 
   // Financial Transactions CRUD
   Future<void> insertTransaction(Map<String, dynamic> txn) =>
