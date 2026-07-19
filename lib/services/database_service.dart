@@ -23,6 +23,7 @@ class DatabaseService {
     'mortality',
     'egg_production',
     'financial_transactions',
+    'egg_sales',
   ];
 
   Future<Database> get database async {
@@ -43,7 +44,7 @@ class DatabaseService {
     final path = join(dbPath, filePath);
     return await openDatabase(
       path,
-      version: 10,
+      version: 11,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
@@ -312,12 +313,23 @@ class DatabaseService {
       // v10: egg sales & debtors ledger.
       await _createEggSalesTable(db);
     }
+    if (oldVersion < 11) {
+      // v11: egg sales join cloud sync — tombstone column + queue any
+      // rows recorded while the ledger was local-only for upload.
+      final info = await db.rawQuery('PRAGMA table_info(egg_sales)');
+      if (!info.any((c) => c['name'] == 'deletedAt')) {
+        await db.execute('ALTER TABLE egg_sales ADD COLUMN deletedAt TEXT');
+      }
+      await db.execute('''
+        INSERT OR REPLACE INTO sync_outbox (tableName, rowId, queuedAt)
+        SELECT 'egg_sales', id, ? FROM egg_sales
+      ''', [DateTime.now().toIso8601String()]);
+    }
   }
 
-  /// Egg sales & debtors. Local-only for now (NOT in [syncedTables] —
-  /// the cloud has no h2r_egg_sales mirror yet); the income these sales
-  /// generate still syncs via financial_transactions. IF EXISTS guard so
-  /// fresh installs and migrations share one definition.
+  /// Egg sales & debtors — synced to the h2r_egg_sales cloud mirror.
+  /// IF EXISTS guard so fresh installs and migrations share one
+  /// definition.
   Future<void> _createEggSalesTable(DatabaseExecutor db) async {
     await db.execute('''
       CREATE TABLE IF NOT EXISTS egg_sales (
@@ -329,7 +341,8 @@ class DatabaseService {
         amountPaid REAL NOT NULL DEFAULT 0,
         notes TEXT,
         createdAt TEXT NOT NULL DEFAULT '',
-        updatedAt TEXT NOT NULL DEFAULT ''
+        updatedAt TEXT NOT NULL DEFAULT '',
+        deletedAt TEXT
       )
     ''');
   }
@@ -707,26 +720,17 @@ class DatabaseService {
   Future<void> deleteEggProduction(String id) =>
       _softDeleteSynced('egg_production', id);
 
-  // Egg Sales CRUD (local-only — plain writes, no sync outbox)
-  Future<void> insertEggSale(Map<String, dynamic> sale) async {
-    final db = await database;
-    await db.insert('egg_sales', sale);
-  }
+  // Egg Sales CRUD (synced to h2r_egg_sales like every other table)
+  Future<void> insertEggSale(Map<String, dynamic> sale) =>
+      _insertSynced('egg_sales', sale);
 
-  Future<List<Map<String, dynamic>>> getAllEggSales() async {
-    final db = await database;
-    return db.query('egg_sales', orderBy: 'date DESC');
-  }
+  Future<List<Map<String, dynamic>>> getAllEggSales() =>
+      _liveRows('egg_sales', orderBy: 'date DESC');
 
-  Future<void> updateEggSale(Map<String, dynamic> sale) async {
-    final db = await database;
-    await db.update('egg_sales', sale, where: 'id = ?', whereArgs: [sale['id']]);
-  }
+  Future<void> updateEggSale(Map<String, dynamic> sale) =>
+      _updateSynced('egg_sales', sale);
 
-  Future<void> deleteEggSale(String id) async {
-    final db = await database;
-    await db.delete('egg_sales', where: 'id = ?', whereArgs: [id]);
-  }
+  Future<void> deleteEggSale(String id) => _softDeleteSynced('egg_sales', id);
 
   // Financial Transactions CRUD
   Future<void> insertTransaction(Map<String, dynamic> txn) =>

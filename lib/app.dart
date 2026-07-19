@@ -203,6 +203,7 @@ class _MainNavigationState extends State<MainNavigation> {
           context.read<VaccinationProvider>().reload(),
           context.read<FeedProvider>().reload(),
           context.read<EggProductionProvider>().reload(),
+          context.read<EggSalesProvider>().reload(),
           context.read<MortalityProvider>().reload(),
           context.read<FinancialProvider>().reload(),
         ]);
@@ -526,7 +527,7 @@ class _MainNavigationState extends State<MainNavigation> {
               border: Border(top: BorderSide(color: AppColors.border)),
             ),
             child: Text(
-              'Hatch2Revenue v1.3.2',
+              'Hatch2Revenue v1.4.0',
               style: GoogleFonts.inter(
                 color: AppColors.textMuted,
                 fontSize: 12,
