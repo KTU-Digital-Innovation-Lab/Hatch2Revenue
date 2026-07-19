@@ -13,6 +13,7 @@ import '../providers/feed_provider.dart';
 import '../utils/app_colors.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/units.dart';
+import 'quick_log/quick_log_screen.dart';
 import '../app.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -83,6 +84,52 @@ class HomeScreen extends StatelessWidget {
               ],
             ),
           ),
+
+          // One-tap entry into the farmer's daily ritual.
+          Material(
+            color: AppColors.amber,
+            borderRadius: BorderRadius.circular(14),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: () => Navigator.of(context).push(MaterialPageRoute(
+                fullscreenDialog: true,
+                builder: (_) => const QuickLogScreen(),
+              )),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+                child: Row(
+                  children: [
+                    const Icon(Icons.edit_note, color: Colors.white, size: 26),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Quick Daily Log',
+                            style: GoogleFonts.poppins(
+                              color: Colors.white,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          Text(
+                            'Eggs, feed & deaths — one screen, one save',
+                            style: GoogleFonts.inter(
+                              color: Colors.white.withValues(alpha: 0.85),
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(Icons.chevron_right, color: Colors.white),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
 
           // Live stats — today at a glance
           LayoutBuilder(builder: (ctx, c) {
