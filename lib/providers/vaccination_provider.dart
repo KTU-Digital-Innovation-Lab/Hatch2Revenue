@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import '../models/vaccination.dart';
 import '../services/database_service.dart';
+import '../services/notification_service.dart';
 import '../utils/app_feedback.dart';
 
 class VaccinationProvider extends ChangeNotifier {
@@ -18,6 +19,35 @@ class VaccinationProvider extends ChangeNotifier {
       .length;
 
   int get overdueCount => _vaccinations.where((v) => v.isOverdue).length;
+
+  /// Re-schedules the reminders of every still-pending vaccination.
+  /// Called when the farmer changes the reminder hour in Settings so the
+  /// new time applies to doses that were scheduled earlier, not just to
+  /// ones created afterwards. Returns how many were updated.
+  /// [batchLabel] resolves a batch reference to its display name.
+  Future<int> rescheduleReminders({
+    required int dayBeforeHour,
+    required String Function(String batchId) batchLabel,
+  }) async {
+    final now = DateTime.now();
+    var updated = 0;
+    for (final v in _vaccinations) {
+      if (v.status != VaccinationStatus.scheduled) continue;
+      if (!v.reminderEnabled) continue;
+      if (v.scheduledDate.isBefore(now)) continue; // already due or past
+      // scheduleVaccinationReminders cancels the old pair first, so this
+      // replaces rather than duplicates.
+      await NotificationService().scheduleVaccinationReminders(
+        vaccinationId: v.id,
+        vaccineName: v.vaccineName,
+        batchLabel: batchLabel(v.batchId),
+        dueDate: v.scheduledDate,
+        dayBeforeHour: dayBeforeHour,
+      );
+      updated++;
+    }
+    return updated;
+  }
 
   List<Vaccination> get upcomingVaccinations {
     final now = DateTime.now();

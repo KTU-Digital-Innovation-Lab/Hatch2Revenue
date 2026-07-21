@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import '../../providers/batch_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/theme_provider.dart';
+import '../../providers/vaccination_provider.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/html_widgets.dart';
 import '../../utils/units.dart';
@@ -197,11 +199,30 @@ class SettingsScreen extends StatelessWidget {
                 label: 'Vaccination reminder time',
                 child: InkWell(
                   onTap: () async {
+                    // Captured before the await so nothing reaches across
+                    // an async gap for a BuildContext.
+                    final messenger = ScaffoldMessenger.of(context);
+                    final vacc = context.read<VaccinationProvider>();
+                    final batches = context.read<BatchProvider>();
                     final t = await showTimePicker(
                       context: context,
                       initialTime: TimeOfDay(hour: s.reminderHour, minute: 0),
                     );
-                    if (t != null) s.setReminderHour(t.hour);
+                    if (t == null) return;
+                    s.setReminderHour(t.hour);
+                    // Apply the new hour to doses already scheduled.
+                    final n = await vacc.rescheduleReminders(
+                      dayBeforeHour: t.hour,
+                      batchLabel: batches.batchLabel,
+                    );
+                    messenger.showSnackBar(SnackBar(
+                      content: Text(n == 0
+                          ? 'Reminder time saved'
+                          : 'Reminder time saved — $n pending '
+                              '${n == 1 ? 'vaccine' : 'vaccines'} rescheduled'),
+                      backgroundColor: AppColors.green.withValues(alpha: 0.9),
+                      behavior: SnackBarBehavior.floating,
+                    ));
                   },
                   child: Container(
                     width: double.infinity,
@@ -249,7 +270,7 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Center(
-            child: Text('Hatch2Revenue v1.6.0',
+            child: Text('Hatch2Revenue v1.6.1',
                 style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
           ),
           const SizedBox(height: 40),

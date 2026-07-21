@@ -2,7 +2,7 @@ name: hatch2revenue
 description: "A comprehensive poultry farm management application for tracking birds from day-old chicks to layer stage, with vaccination scheduling, feed monitoring, mortality tracking, egg production forecasting, and financial analysis."
 publish_to: 'none'
 
-version: 1.6.0+17
+version: 1.6.1+18
 
 environment:
   sdk: ^3.11.1
