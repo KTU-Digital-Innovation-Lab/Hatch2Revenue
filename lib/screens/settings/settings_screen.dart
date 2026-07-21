@@ -249,7 +249,7 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Center(
-            child: Text('Hatch2Revenue v1.5.0',
+            child: Text('Hatch2Revenue v1.6.0',
                 style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
           ),
           const SizedBox(height: 40),

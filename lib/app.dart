@@ -22,6 +22,7 @@ import 'screens/egg_production/egg_production_screen.dart';
 import 'screens/mortality/mortality_screen.dart';
 import 'screens/financial/financial_screen.dart';
 import 'screens/farm_profile/farm_profile_screen.dart';
+import 'screens/alerts/alerts_screen.dart';
 import 'screens/analytics/analytics_screen.dart';
 import 'screens/settings/settings_screen.dart';
 import 'screens/splash_screen.dart';
@@ -448,12 +449,78 @@ class _MainNavigationState extends State<MainNavigation> {
         key: _scaffoldKey,
         backgroundColor: AppColors.background,
         // No app bar: every screen already shows its own name, and the
-        // freed height keeps content within thumb reach.
+        // freed height keeps content within thumb reach. Only the alert
+        // bell sits above the content, pinned top-right.
         body: SafeArea(
           bottom: false,
-          child: IndexedStack(index: _currentIndex, children: _screens),
+          child: Column(
+            children: [
+              _buildBellRow(context),
+              Expanded(
+                child: IndexedStack(index: _currentIndex, children: _screens),
+              ),
+            ],
+          ),
         ),
         bottomNavigationBar: _buildBottomBar(context),
+      ),
+    );
+  }
+
+  /// Slim top-right strip holding only the alert bell — no title (each
+  /// screen prints its own) and no date.
+  Widget _buildBellRow(BuildContext context) {
+    // Rebuild the badge whenever anything alert-worthy changes.
+    context.watch<VaccinationProvider>();
+    context.watch<FeedProvider>();
+    context.watch<EggSalesProvider>();
+    final count = AlertsScreen.alertCount(context);
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 12, top: 4),
+      child: Align(
+        alignment: Alignment.centerRight,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const AlertsScreen()),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(
+                  count > 0
+                      ? Icons.notifications_active_outlined
+                      : Icons.notifications_none,
+                  size: 24,
+                  color: count > 0 ? AppColors.amber : AppColors.textSecondary,
+                ),
+                if (count > 0)
+                  Positioned(
+                    right: -4,
+                    top: -4,
+                    child: Container(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: AppColors.red,
+                        borderRadius: BorderRadius.circular(9),
+                        border:
+                            Border.all(color: AppColors.background, width: 1.5),
+                      ),
+                      child: Text('$count',
+                          style: GoogleFonts.inter(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

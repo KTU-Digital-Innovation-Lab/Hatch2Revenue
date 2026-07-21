@@ -125,6 +125,61 @@ class NotificationService {
     }
   }
 
+  /// Two reminders per vaccination, because one is easy to miss:
+  ///   1. the evening/day before, at the hour chosen in Settings, and
+  ///   2. the morning it is due, at 06:30, before work starts.
+  /// Reminders already in the past are simply skipped.
+  Future<void> scheduleVaccinationReminders({
+    required String vaccinationId,
+    required String vaccineName,
+    required String batchLabel,
+    required DateTime dueDate,
+    required int dayBeforeHour,
+  }) async {
+    final ids = reminderIds(vaccinationId);
+    await cancelNotification(ids.$1);
+    await cancelNotification(ids.$2);
+
+    final due = DateTime(dueDate.year, dueDate.month, dueDate.day);
+
+    // 1. Day before, at the farmer's chosen hour.
+    final dayBefore = due
+        .subtract(const Duration(days: 1))
+        .add(Duration(hours: dayBeforeHour));
+    if (dayBefore.isAfter(DateTime.now())) {
+      await scheduleNotification(
+        id: ids.$1,
+        title: 'Vaccination tomorrow',
+        body: '$vaccineName for $batchLabel is due tomorrow.',
+        scheduledDate: dayBefore,
+      );
+    }
+
+    // 2. Morning of, at 06:30.
+    final morningOf = due.add(const Duration(hours: 6, minutes: 30));
+    if (morningOf.isAfter(DateTime.now())) {
+      await scheduleNotification(
+        id: ids.$2,
+        title: 'Vaccination due today',
+        body: '$vaccineName for $batchLabel is due today.',
+        scheduledDate: morningOf,
+      );
+    }
+  }
+
+  /// Stable pair of notification ids for a vaccination. Kept inside a
+  /// safe 32-bit range so both fit an Android notification id.
+  (int, int) reminderIds(String vaccinationId) {
+    final base = vaccinationId.hashCode.abs() % 100000000;
+    return (base * 2, base * 2 + 1);
+  }
+
+  Future<void> cancelVaccinationReminders(String vaccinationId) async {
+    final ids = reminderIds(vaccinationId);
+    await cancelNotification(ids.$1);
+    await cancelNotification(ids.$2);
+  }
+
   Future<void> cancelNotification(int id) async {
     await _notifications.cancel(id);
   }

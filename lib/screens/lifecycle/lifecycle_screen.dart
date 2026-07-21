@@ -11,6 +11,7 @@ import '../../providers/feed_provider.dart';
 import '../../providers/financial_provider.dart';
 import '../../providers/mortality_provider.dart';
 import '../../providers/quick_action_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../../providers/vaccination_provider.dart';
 import '../../services/notification_service.dart';
 import '../../utils/app_colors.dart';
@@ -327,17 +328,17 @@ class LifecycleScreen extends StatelessWidget {
     if (vaccinations.isEmpty) return 0;
     context.read<VaccinationProvider>().addAll(vaccinations);
 
-    // Reminders one day before each dose
+    // Two reminders per dose: the day before at the farmer's chosen
+    // hour, and again at 06:30 on the morning it is due.
+    final hour = context.read<SettingsProvider>().reminderHour;
     for (final v in vaccinations) {
-      final reminder = v.scheduledDate.subtract(const Duration(days: 1));
-      if (reminder.isAfter(today)) {
-        NotificationService().scheduleNotification(
-          id: v.id.hashCode.abs(),
-          title: 'Vaccination Reminder',
-          body: '${v.vaccineName} for ${batch.name} is due tomorrow!',
-          scheduledDate: reminder,
-        );
-      }
+      NotificationService().scheduleVaccinationReminders(
+        vaccinationId: v.id,
+        vaccineName: v.vaccineName,
+        batchLabel: batch.name,
+        dueDate: v.scheduledDate,
+        dayBeforeHour: hour,
+      );
     }
     return vaccinations.length;
   }

@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../models/vaccination.dart';
 import '../../providers/vaccination_provider.dart';
 import '../../providers/batch_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../../services/notification_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/html_widgets.dart';
@@ -370,16 +371,14 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
                   notes: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
                 );
                 context.read<VaccinationProvider>().addVaccination(vacc);
-                if (smsAlert && selectedDate.isAfter(DateTime.now())) {
-                  final reminder = selectedDate.subtract(const Duration(days: 1));
-                  if (reminder.isAfter(DateTime.now())) {
-                    NotificationService().scheduleNotification(
-                      id: vacc.id.hashCode.abs(),
-                      title: 'Vaccination Reminder',
-                      body: '${vacc.vaccineName} is due tomorrow!',
-                      scheduledDate: reminder,
-                    );
-                  }
+                if (smsAlert) {
+                  NotificationService().scheduleVaccinationReminders(
+                    vaccinationId: vacc.id,
+                    vaccineName: vacc.vaccineName,
+                    batchLabel: context.read<BatchProvider>().batchLabel(vacc.batchId),
+                    dueDate: selectedDate,
+                    dayBeforeHour: context.read<SettingsProvider>().reminderHour,
+                  );
                 }
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -505,19 +504,18 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
                 );
                 context.read<VaccinationProvider>().updateVaccination(updated);
 
-                // Refresh the reminder for the new date/status
-                NotificationService().cancelNotification(vacc.id.hashCode.abs());
+                // Refresh the reminders for the new date/status
+                NotificationService().cancelVaccinationReminders(vacc.id);
                 if (updated.status == VaccinationStatus.scheduled &&
                     updated.reminderEnabled) {
-                  final reminder = selectedDate.subtract(const Duration(days: 1));
-                  if (reminder.isAfter(DateTime.now())) {
-                    NotificationService().scheduleNotification(
-                      id: updated.id.hashCode.abs(),
-                      title: 'Vaccination Reminder',
-                      body: '${updated.vaccineName} is due tomorrow!',
-                      scheduledDate: reminder,
-                    );
-                  }
+                  NotificationService().scheduleVaccinationReminders(
+                    vaccinationId: updated.id,
+                    vaccineName: updated.vaccineName,
+                    batchLabel:
+                        context.read<BatchProvider>().batchLabel(updated.batchId),
+                    dueDate: selectedDate,
+                    dayBeforeHour: context.read<SettingsProvider>().reminderHour,
+                  );
                 }
 
                 Navigator.pop(ctx);
