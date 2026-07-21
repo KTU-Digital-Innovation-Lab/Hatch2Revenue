@@ -53,10 +53,12 @@ class PoultryApp extends StatelessWidget {
         builder: (context, themeProvider, settings, _) {
           final dark = themeProvider.isDark;
           return MaterialApp(
-            // Re-inflate the tree whenever the palette changes (theme,
-            // colour-vision mode, or contrast) so every widget picks up
-            // the new AppColors values.
-            key: ValueKey('$dark-${settings.vision.index}-${settings.highContrast}'),
+            // NOTE: deliberately no key here. Keying MaterialApp on the
+            // palette re-inflated the entire tree — including the
+            // Navigator — which silently closed whatever screen the
+            // farmer was on (e.g. Settings) the moment they changed a
+            // colour. MainNavigation instead watches the settings and
+            // rebuilds its screens in place, so pushed routes survive.
             title: 'Hatch2Revenue',
             scaffoldMessengerKey: scaffoldMessengerKey,
             debugShowCheckedModeBanner: false,
@@ -234,17 +236,23 @@ class _MainNavigationState extends State<MainNavigation> {
     });
   }
 
-  final List<Widget> _screens = const [
-    HomeScreen(),
-    LifecycleScreen(),
-    VaccinationScreen(),
-    FeedScreen(),
-    EggProductionScreen(),
-    MortalityScreen(),
-    FinancialScreen(),
-    FarmProfileScreen(),
-    AnalyticsScreen(),
-  ];
+  /// Rebuilt (not const) on every MainNavigation build so a palette or
+  /// unit change reaches the screens. Flutter matches children by type
+  /// and position, so each screen keeps its State — scroll positions and
+  /// form contents are preserved.
+  // ignore: prefer_const_constructors — const instances are canonicalised
+  // to the SAME object, which makes Flutter skip the rebuild we need.
+  List<Widget> get _screens => [
+        HomeScreen(),
+        LifecycleScreen(),
+        VaccinationScreen(),
+        FeedScreen(),
+        EggProductionScreen(),
+        MortalityScreen(),
+        FinancialScreen(),
+        FarmProfileScreen(),
+        AnalyticsScreen(),
+      ];
 
   final List<String> _titles = const [
     'Dashboard',
@@ -266,7 +274,7 @@ class _MainNavigationState extends State<MainNavigation> {
     Icons.egg_outlined,
     Icons.monitor_heart_outlined,
     Icons.payments_outlined,
-    Icons.agriculture_outlined,
+    Icons.warehouse_outlined, // barn — the farm itself
     Icons.insights,
   ];
 
@@ -310,11 +318,13 @@ class _MainNavigationState extends State<MainNavigation> {
   static const List<int> _barTabs = [0, 1, 4, 3]; // Home, Batches, Eggs, Feed
   static const List<String> _barLabels = ['Home', 'Batches', 'Eggs', 'Feed'];
   static const List<IconData> _barIcons = [
-    Icons.space_dashboard_outlined,
-    Icons.pets,
+    Icons.home_outlined,
+    Icons.pets, // replaced by the hen glyph below
     Icons.egg_outlined,
     Icons.grass,
   ];
+  // Batches uses the farm's own hen silhouette rather than a Material icon.
+  static const _henGlyph = AssetImage('assets/hen_glyph.png');
 
   // Screens reachable from the More sheet.
   static const List<int> _moreTabs = [2, 5, 6, 8, 7];
@@ -439,6 +449,10 @@ class _MainNavigationState extends State<MainNavigation> {
 
   @override
   Widget build(BuildContext context) {
+    // Rebuild the screens in place when the palette, text size or farm
+    // units change — this is what replaces the old whole-tree key.
+    context.watch<SettingsProvider>();
+    context.watch<ThemeProvider>();
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -541,6 +555,7 @@ class _MainNavigationState extends State<MainNavigation> {
               for (var i = 0; i < _barTabs.length; i++)
                 _barItem(
                   icon: _barIcons[i],
+                  image: _barTabs[i] == 1 ? _henGlyph : null,
                   label: _barLabels[i],
                   selected: _currentIndex == _barTabs[i],
                   onTap: () => _setIndex(_barTabs[i]),
@@ -564,6 +579,7 @@ class _MainNavigationState extends State<MainNavigation> {
     required String label,
     required bool selected,
     required VoidCallback onTap,
+    ImageProvider? image,
     int? badge,
   }) {
     final color = selected ? AppColors.amber : AppColors.textSecondary;
@@ -585,7 +601,9 @@ class _MainNavigationState extends State<MainNavigation> {
                         : Colors.transparent,
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Icon(icon, size: 21, color: color),
+                  child: image != null
+                      ? ImageIcon(image, size: 21, color: color)
+                      : Icon(icon, size: 21, color: color),
                 ),
                 if (badge != null)
                   Positioned(

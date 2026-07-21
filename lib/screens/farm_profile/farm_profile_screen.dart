@@ -249,7 +249,7 @@ class _FarmProfileScreenState extends State<FarmProfileScreen> {
           // Header
           Row(
             children: [
-              Icon(Icons.agriculture_outlined, color: AppColors.amber, size: 30),
+              Icon(Icons.warehouse_outlined, color: AppColors.amber, size: 30),
               const SizedBox(width: 12),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
