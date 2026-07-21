@@ -437,7 +437,7 @@ class EggProductionScreen extends StatelessWidget {
               if (count <= 0) return;
               provider.updateRecord(egg.copyWith(eggCount: count, damagedCount: damaged));
               Navigator.pop(ctx);
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Record updated'), backgroundColor: AppColors.cyan, behavior: SnackBarBehavior.floating));
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Record updated'), backgroundColor: AppColors.cyan, behavior: SnackBarBehavior.floating));
             },
             child: const Text('Save Changes'),
           ),
@@ -460,14 +460,14 @@ class EggProductionScreen extends StatelessWidget {
           Text(Units.crateShort(s.eggCount), style: GoogleFonts.inter(color: AppColors.green, fontWeight: FontWeight.w500, fontSize: 12)),
           Text('$sym${s.total.toStringAsFixed(0)}', style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11)),
           s.isPaid
-              ? const TagChip(label: 'Paid', color: AppColors.green)
+              ? TagChip(label: 'Paid', color: AppColors.green)
               : Text('$sym${s.owed.toStringAsFixed(0)}', style: GoogleFonts.inter(color: AppColors.red, fontWeight: FontWeight.w600, fontSize: 12)),
           Row(mainAxisSize: MainAxisSize.min, children: [
             if (!s.isPaid)
               GestureDetector(
                 onTap: () => _showPaymentDialog(context, s, provider),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
                   child: Icon(Icons.payments_outlined, color: AppColors.green, size: 18),
                 ),
               ),

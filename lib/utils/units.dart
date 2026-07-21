@@ -5,8 +5,16 @@
 /// unit (individual eggs, kilograms) so nothing breaks, but the UI is
 /// expressed in the units farmers actually use.
 class Units {
-  static const int eggsPerCrate = 30;
-  static const double kgPerBag = 50;
+  /// Farm-configurable in Settings — most Ghanaian farms use 30-egg
+  /// crates and 50 kg bags, but these can be changed per farm.
+  /// SettingsProvider loads the saved values at startup; records always
+  /// store base units (individual eggs, kilograms) so history stays
+  /// correct even if a farm changes its crate or bag size later.
+  static int eggsPerCrate = 30;
+  static double kgPerBag = 50;
+
+  static const int defaultEggsPerCrate = 30;
+  static const double defaultKgPerBag = 50;
 
   // --- Eggs ↔ crates ------------------------------------------------
 

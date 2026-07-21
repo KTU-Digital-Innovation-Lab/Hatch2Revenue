@@ -11,7 +11,7 @@ import '../../utils/html_widgets.dart';
 class MortalityScreen extends StatelessWidget {
   const MortalityScreen({super.key});
 
-  static const List<Color> _causeColors = [
+  static final List<Color> _causeColors = [
     AppColors.red, AppColors.amber, AppColors.purple,
     AppColors.cyan, AppColors.blue, AppColors.green,
   ];
@@ -316,7 +316,7 @@ class MortalityScreen extends StatelessWidget {
                 // Apply the difference to the batch's live count
                 context.read<BatchProvider>().adjustCount(mort.batchId, mort.count - count);
                 Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Record updated'), backgroundColor: AppColors.cyan, behavior: SnackBarBehavior.floating));
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Record updated'), backgroundColor: AppColors.cyan, behavior: SnackBarBehavior.floating));
               },
               child: const Text('Save Changes'),
             ),

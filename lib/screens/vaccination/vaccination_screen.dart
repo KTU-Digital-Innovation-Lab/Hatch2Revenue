@@ -521,7 +521,7 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
                 }
 
                 Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                   content: Text('Vaccine updated'),
                   backgroundColor: AppColors.cyan,
                   behavior: SnackBarBehavior.floating,

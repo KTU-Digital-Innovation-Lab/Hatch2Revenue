@@ -124,7 +124,7 @@ class _FeedScreenState extends State<FeedScreen> {
                       : _logsTable(context, records, feedProvider),
                 ),
                 right: HtmlCard(
-                  header: HtmlCardHeader(icon: Icons.balance, title: 'FCR Calculator', trailing: const TagChip(label: 'Auto-computed', color: AppColors.green)),
+                  header: HtmlCardHeader(icon: Icons.balance, title: 'FCR Calculator', trailing: TagChip(label: 'Auto-computed', color: AppColors.green)),
                   body: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -648,7 +648,7 @@ class _FeedScreenState extends State<FeedScreen> {
                 if (bags <= 0) return;
                 provider.updateRecord(feed.copyWith(feedType: selectedType, bagsUsed: 1, kgPerBag: Units.bagsToKg(bags)));
                 Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Record updated'), backgroundColor: AppColors.cyan, behavior: SnackBarBehavior.floating));
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Record updated'), backgroundColor: AppColors.cyan, behavior: SnackBarBehavior.floating));
               },
               child: const Text('Save Changes'),
             ),

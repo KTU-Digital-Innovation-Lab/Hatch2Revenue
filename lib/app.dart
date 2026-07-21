@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:intl/intl.dart';
 import 'providers/batch_provider.dart';
 import 'providers/vaccination_provider.dart';
 import 'providers/feed_provider.dart';
@@ -12,6 +11,7 @@ import 'providers/egg_sales_provider.dart';
 import 'providers/financial_provider.dart';
 import 'providers/quick_action_provider.dart';
 import 'providers/farm_profile_provider.dart';
+import 'providers/settings_provider.dart';
 import 'providers/theme_provider.dart';
 import 'services/sync_service.dart';
 import 'screens/home_screen.dart';
@@ -23,6 +23,7 @@ import 'screens/mortality/mortality_screen.dart';
 import 'screens/financial/financial_screen.dart';
 import 'screens/farm_profile/farm_profile_screen.dart';
 import 'screens/analytics/analytics_screen.dart';
+import 'screens/settings/settings_screen.dart';
 import 'screens/splash_screen.dart';
 import 'utils/app_colors.dart';
 import 'utils/app_feedback.dart';
@@ -44,19 +45,27 @@ class PoultryApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => QuickActionProvider()),
         ChangeNotifierProvider(create: (_) => FarmProfileProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => SettingsProvider()),
         ChangeNotifierProvider(create: (_) => SyncService()..start()),
       ],
-      child: Consumer<ThemeProvider>(
-        builder: (context, themeProvider, _) {
+      child: Consumer2<ThemeProvider, SettingsProvider>(
+        builder: (context, themeProvider, settings, _) {
           final dark = themeProvider.isDark;
           return MaterialApp(
-            // Re-inflate the tree on theme change so every widget picks
-            // up the new AppColors palette.
-            key: ValueKey(dark),
+            // Re-inflate the tree whenever the palette changes (theme,
+            // colour-vision mode, or contrast) so every widget picks up
+            // the new AppColors values.
+            key: ValueKey('$dark-${settings.vision.index}-${settings.highContrast}'),
             title: 'Hatch2Revenue',
             scaffoldMessengerKey: scaffoldMessengerKey,
             debugShowCheckedModeBanner: false,
             theme: _buildTheme(dark),
+            // Farmer-chosen text size applies app-wide.
+            builder: (context, child) => MediaQuery.withClampedTextScaling(
+              minScaleFactor: settings.textScale,
+              maxScaleFactor: settings.textScale,
+              child: child!,
+            ),
             home: SplashScreen.completed
                 ? const MainNavigation()
                 : const SplashScreen(),
@@ -122,7 +131,7 @@ class PoultryApp extends StatelessWidget {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(10),
-              borderSide: const BorderSide(color: AppColors.amber, width: 2),
+              borderSide: BorderSide(color: AppColors.amber, width: 2),
             ),
           ),
           elevatedButtonTheme: ElevatedButtonThemeData(
@@ -183,6 +192,9 @@ class _MainNavigationState extends State<MainNavigation> {
   // Survives the re-inflation that happens on theme toggle so the user
   // stays on the same screen.
   static int _lastIndex = 0;
+  /// The farmer's chosen start-up screen is applied once per app launch;
+  /// after that _lastIndex preserves where they were across rebuilds.
+  static bool _startTabApplied = false;
   int _currentIndex = _lastIndex;
   // Tabs the user came from, so the system back button returns to the
   // previous screen instead of exiting the app.
@@ -196,6 +208,16 @@ class _MainNavigationState extends State<MainNavigation> {
     // provider from the local database so the UI shows them.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      if (!_startTabApplied) {
+        _startTabApplied = true;
+        final start = context.read<SettingsProvider>().startTab;
+        if (start != _currentIndex && start >= 0 && start < _screens.length) {
+          setState(() {
+            _currentIndex = start;
+            _lastIndex = start;
+          });
+        }
+      }
       context.read<SyncService>().onDataChanged = () async {
         if (!mounted) return;
         await Future.wait([
@@ -247,23 +269,6 @@ class _MainNavigationState extends State<MainNavigation> {
     Icons.insights,
   ];
 
-  // Nav section structure: null = section header label, int = screen index
-  static const List<_NavItem> _navItems = [
-    _NavItem(sectionLabel: 'MAIN'),
-    _NavItem(index: 0),
-    _NavItem(sectionLabel: 'OPERATIONS'),
-    _NavItem(index: 1),
-    _NavItem(index: 2),
-    _NavItem(index: 3),
-    _NavItem(index: 4),
-    _NavItem(index: 5),
-    _NavItem(index: 6),
-    _NavItem(sectionLabel: 'ANALYTICS'),
-    _NavItem(index: 8),
-    _NavItem(sectionLabel: 'SYSTEM'),
-    _NavItem(index: 7),
-  ];
-
   void _setIndex(int index) {
     if (_scaffoldKey.currentState?.isDrawerOpen ?? false) {
       Navigator.of(context).pop();
@@ -298,6 +303,139 @@ class _MainNavigationState extends State<MainNavigation> {
     }
   }
 
+  // ── Bottom bar: the five modules a farmer touches daily. Everything
+  // else lives one tap away in More, so the whole app stays reachable
+  // with a thumb.
+  static const List<int> _barTabs = [0, 1, 4, 3]; // Home, Batches, Eggs, Feed
+  static const List<String> _barLabels = ['Home', 'Batches', 'Eggs', 'Feed'];
+  static const List<IconData> _barIcons = [
+    Icons.space_dashboard_outlined,
+    Icons.pets,
+    Icons.egg_outlined,
+    Icons.grass,
+  ];
+
+  // Screens reachable from the More sheet.
+  static const List<int> _moreTabs = [2, 5, 6, 8, 7];
+
+  bool get _onMoreScreen => !_barTabs.contains(_currentIndex);
+
+  void _openMore() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AppColors.border,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text('All modules',
+                  style: GoogleFonts.poppins(
+                    color: AppColors.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  )),
+              const SizedBox(height: 10),
+              Consumer<VaccinationProvider>(
+                builder: (context, vacc, _) => Column(
+                  children: [
+                    for (final i in _moreTabs)
+                      _moreTile(
+                        ctx,
+                        icon: _icons[i],
+                        title: _titles[i],
+                        badge: i == 2 && vacc.overdueCount > 0
+                            ? vacc.overdueCount
+                            : null,
+                        onTap: () {
+                          Navigator.pop(ctx);
+                          _setIndex(i);
+                        },
+                      ),
+                    _moreTile(
+                      ctx,
+                      icon: Icons.settings_outlined,
+                      title: 'Settings',
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        Navigator.of(context).push(MaterialPageRoute(
+                            builder: (_) => const SettingsScreen()));
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _moreTile(BuildContext ctx,
+      {required IconData icon,
+      required String title,
+      int? badge,
+      required VoidCallback onTap}) {
+    final selected = _titles.contains(title) &&
+        _currentIndex == _titles.indexOf(title);
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 12),
+        child: Row(
+          children: [
+            Icon(icon,
+                size: 20,
+                color: selected ? AppColors.amber : AppColors.textSecondary),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(title,
+                  style: GoogleFonts.inter(
+                    color: selected ? AppColors.amber : AppColors.textPrimary,
+                    fontSize: 14.5,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                  )),
+            ),
+            if (badge != null)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.red,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text('$badge',
+                    style: GoogleFonts.inter(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w700)),
+              ),
+            const SizedBox(width: 4),
+            Icon(Icons.chevron_right, size: 18, color: AppColors.textMuted),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return PopScope(
@@ -307,329 +445,110 @@ class _MainNavigationState extends State<MainNavigation> {
         _handleBack();
       },
       child: Scaffold(
-      key: _scaffoldKey,
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
+        key: _scaffoldKey,
         backgroundColor: AppColors.background,
-        elevation: 0,
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(1),
-          child: Container(height: 1, color: AppColors.border),
+        // No app bar: every screen already shows its own name, and the
+        // freed height keeps content within thumb reach.
+        body: SafeArea(
+          bottom: false,
+          child: IndexedStack(index: _currentIndex, children: _screens),
         ),
-        leading: Builder(
-          builder: (ctx) => IconButton(
-            icon: Icon(Icons.menu, color: AppColors.textPrimary),
-            onPressed: () => Scaffold.of(ctx).openDrawer(),
-          ),
-        ),
-        title: Text(
-          _titles[_currentIndex],
-          style: GoogleFonts.poppins(
-            color: AppColors.textPrimary,
-            fontSize: 17,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-        actions: [
-          Consumer<ThemeProvider>(
-            builder: (context, themeProvider, _) => IconButton(
-              tooltip: themeProvider.isDark ? 'Day mode' : 'Night mode',
-              icon: Icon(
-                themeProvider.isDark
-                    ? Icons.light_mode_outlined
-                    : Icons.dark_mode_outlined,
-                color: AppColors.textSecondary,
-                size: 20,
-              ),
-              onPressed: themeProvider.toggle,
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Center(
-              child: Text(
-                DateFormat('EEE, d MMM yyyy').format(DateTime.now()),
-                style: GoogleFonts.inter(
-                  color: AppColors.textSecondary,
-                  fontSize: 12,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-      drawer: _buildDrawer(context),
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
-      ),
-    ),
-    );
-  }
-
-  Widget _buildDrawer(BuildContext context) {
-    return Drawer(
-      backgroundColor: AppColors.surface,
-      width: 270,
-      child: Column(
-        children: [
-          // Logo header
-          Consumer<FarmProfileProvider>(
-            builder: (context, farmProvider, _) {
-              final profile = farmProvider.profile;
-              return Container(
-                width: double.infinity,
-                padding: EdgeInsets.only(
-                  top: MediaQuery.of(context).padding.top + 20,
-                  bottom: 20,
-                  left: 20,
-                  right: 20,
-                ),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(color: AppColors.border),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: AppColors.amber.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(
-                              color: AppColors.amber.withValues(alpha: 0.3),
-                            ),
-                          ),
-                          padding: const EdgeInsets.all(4),
-                          child: Image.asset(
-                            'assets/chicken.png',
-                            fit: BoxFit.contain,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Hatch2Revenue',
-                              style: GoogleFonts.poppins(
-                                color: AppColors.amber,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                            Text(
-                              'FARM MANAGER',
-                              style: GoogleFonts.inter(
-                                color: AppColors.textSecondary,
-                                fontSize: 10,
-                                letterSpacing: 1.5,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    if (profile.farmName.isNotEmpty) ...[
-                      const SizedBox(height: 14),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceLight,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppColors.border),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.agriculture_outlined,
-                              color: AppColors.amber,
-                              size: 14,
-                            ),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                profile.farmName,
-                                style: GoogleFonts.inter(
-                                  color: AppColors.textPrimary,
-                                  fontSize: 12,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              );
-            },
-          ),
-          // Nav items
-          Expanded(
-            child: Consumer<VaccinationProvider>(
-              builder: (context, vaccProvider, _) {
-                final overdueCount = vaccProvider.overdueCount;
-                return ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
-                  itemCount: _navItems.length,
-                  itemBuilder: (context, i) {
-                    final item = _navItems[i];
-                    if (item.sectionLabel != null) {
-                      return Padding(
-                        padding: const EdgeInsets.only(
-                          left: 20,
-                          top: 16,
-                          bottom: 4,
-                        ),
-                        child: Text(
-                          item.sectionLabel!,
-                          style: GoogleFonts.inter(
-                            color: AppColors.textMuted,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 1.5,
-                          ),
-                        ),
-                      );
-                    }
-                    final idx = item.index!;
-                    final isSelected = _currentIndex == idx;
-                    final showBadge = idx == 2 && overdueCount > 0;
-                    return _DrawerNavTile(
-                      icon: _icons[idx],
-                      iconImage: idx == 1
-                          ? const AssetImage('assets/hen_glyph.png')
-                          : null,
-                      title: _titles[idx],
-                      isSelected: isSelected,
-                      badge: showBadge ? overdueCount : null,
-                      onTap: () => _setIndex(idx),
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-          // Footer
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: AppColors.border)),
-            ),
-            child: Text(
-              'Hatch2Revenue v1.4.1',
-              style: GoogleFonts.inter(
-                color: AppColors.textMuted,
-                fontSize: 12,
-              ),
-            ),
-          ),
-        ],
+        bottomNavigationBar: _buildBottomBar(context),
       ),
     );
   }
-}
 
-class _NavItem {
-  final String? sectionLabel;
-  final int? index;
-  const _NavItem({this.sectionLabel, this.index});
-}
-
-class _DrawerNavTile extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final bool isSelected;
-  final int? badge;
-  final VoidCallback onTap;
-  final ImageProvider? iconImage;
-
-  const _DrawerNavTile({
-    required this.icon,
-    required this.title,
-    required this.isSelected,
-    required this.onTap,
-    this.badge,
-    this.iconImage,
-  });
-
-  @override
-  Widget build(BuildContext context) {
+  Widget _buildBottomBar(BuildContext context) {
+    final overdue = context.watch<VaccinationProvider>().overdueCount;
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
       decoration: BoxDecoration(
-        color: isSelected
-            ? const Color(0x12F5A623) // amber ~7% opacity
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-        border: Border(
-          left: BorderSide(
-            color: isSelected ? AppColors.amber : Colors.transparent,
-            width: 3,
-          ),
-        ),
+        color: AppColors.surface,
+        border: Border(top: BorderSide(color: AppColors.border)),
       ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          height: 62,
           child: Row(
             children: [
-              iconImage != null
-                  ? ImageIcon(
-                      iconImage,
-                      size: 18,
-                      color: isSelected ? AppColors.amber : AppColors.textSecondary,
-                    )
-                  : Icon(
-                      icon,
-                      size: 18,
-                      color: isSelected ? AppColors.amber : AppColors.textSecondary,
-                    ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  title,
-                  style: GoogleFonts.inter(
-                    color: isSelected ? AppColors.amber : AppColors.textPrimary,
-                    fontSize: 14,
-                    fontWeight:
-                        isSelected ? FontWeight.w600 : FontWeight.normal,
-                  ),
+              for (var i = 0; i < _barTabs.length; i++)
+                _barItem(
+                  icon: _barIcons[i],
+                  label: _barLabels[i],
+                  selected: _currentIndex == _barTabs[i],
+                  onTap: () => _setIndex(_barTabs[i]),
                 ),
+              _barItem(
+                icon: Icons.menu,
+                label: 'More',
+                selected: _onMoreScreen,
+                badge: overdue > 0 ? overdue : null,
+                onTap: _openMore,
               ),
-              if (badge != null)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.red,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '$badge',
-                    style: GoogleFonts.inter(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _barItem({
+    required IconData icon,
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+    int? badge,
+  }) {
+    final color = selected ? AppColors.amber : AppColors.textSecondary;
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: selected
+                        ? AppColors.amber.withValues(alpha: 0.13)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(icon, size: 21, color: color),
+                ),
+                if (badge != null)
+                  Positioned(
+                    right: 6,
+                    top: -3,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 5, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: AppColors.red,
+                        borderRadius: BorderRadius.circular(9),
+                        border: Border.all(color: AppColors.surface, width: 1.5),
+                      ),
+                      child: Text('$badge',
+                          style: GoogleFonts.inter(
+                              color: Colors.white,
+                              fontSize: 9,
+                              fontWeight: FontWeight.w700)),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 3),
+            Text(label,
+                style: GoogleFonts.inter(
+                  color: color,
+                  fontSize: 10.5,
+                  fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                )),
+          ],
         ),
       ),
     );

@@ -610,8 +610,8 @@ class EditBtn extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
         child: Icon(Icons.edit_outlined, color: AppColors.cyan, size: 18),
       ),
     );
@@ -637,7 +637,7 @@ InputDecoration htmlInputDec([String hint = '']) => InputDecoration(
   ),
   focusedBorder: OutlineInputBorder(
     borderRadius: BorderRadius.circular(8),
-    borderSide: const BorderSide(color: AppColors.amber, width: 2),
+    borderSide: BorderSide(color: AppColors.amber, width: 2),
   ),
 );
 

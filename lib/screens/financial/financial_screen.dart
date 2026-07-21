@@ -16,8 +16,8 @@ import '../../services/pdf_report_service.dart';
 class FinancialScreen extends StatelessWidget {
   const FinancialScreen({super.key});
 
-  static const List<Color> _expColors = [AppColors.amber, AppColors.red, AppColors.purple, AppColors.blue, AppColors.cyan];
-  static const List<Color> _revColors = [AppColors.green, AppColors.cyan, AppColors.purple, AppColors.blue];
+  static final List<Color> _expColors = [AppColors.amber, AppColors.red, AppColors.purple, AppColors.blue, AppColors.cyan];
+  static final List<Color> _revColors = [AppColors.green, AppColors.cyan, AppColors.purple, AppColors.blue];
 
   @override
   Widget build(BuildContext context) {
@@ -398,7 +398,7 @@ class FinancialScreen extends StatelessWidget {
                   description: descCtrl.text.trim(),
                 ));
                 Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                   content: Text('Transaction updated'),
                   backgroundColor: AppColors.cyan,
                   behavior: SnackBarBehavior.floating,

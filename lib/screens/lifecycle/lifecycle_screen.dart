@@ -458,7 +458,7 @@ class LifecycleScreen extends StatelessWidget {
                   }
                 }
                 Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                   content: Text('Batch updated'),
                   backgroundColor: AppColors.cyan,
                   behavior: SnackBarBehavior.floating,

@@ -69,7 +69,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
     final deaths = int.tryParse(_deaths.text.trim()) ?? 0;
 
     if (eggCount <= 0 && bags <= 0 && deaths <= 0) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Nothing to save — enter eggs, feed or deaths first.'),
         backgroundColor: AppColors.red,
         behavior: SnackBarBehavior.floating,

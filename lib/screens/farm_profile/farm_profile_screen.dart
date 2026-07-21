@@ -72,7 +72,7 @@ class _FarmProfileScreenState extends State<FarmProfileScreen> {
 
     if (farmName.isEmpty || ownerName.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
+        SnackBar(
           content: Text('Farm name and owner name are required.'),
           backgroundColor: AppColors.red,
           behavior: SnackBarBehavior.floating,
@@ -96,7 +96,7 @@ class _FarmProfileScreenState extends State<FarmProfileScreen> {
     context.read<FarmProfileProvider>().save(profile);
 
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
+      SnackBar(
         content: Text('Farm profile saved successfully!'),
         backgroundColor: AppColors.green,
         behavior: SnackBarBehavior.floating,
@@ -203,7 +203,7 @@ class _FarmProfileScreenState extends State<FarmProfileScreen> {
         context.read<FinancialProvider>().reload(),
       ]);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('Backup restored successfully.'),
         backgroundColor: AppColors.green,
         behavior: SnackBarBehavior.floating,
@@ -234,7 +234,7 @@ class _FarmProfileScreenState extends State<FarmProfileScreen> {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(10),
-        borderSide: const BorderSide(color: AppColors.amber, width: 2),
+        borderSide: BorderSide(color: AppColors.amber, width: 2),
       ),
     );
   }
@@ -425,7 +425,7 @@ class _FarmProfileScreenState extends State<FarmProfileScreen> {
                     icon: const Icon(Icons.file_download_outlined, size: 18),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.amber,
-                      side: const BorderSide(color: AppColors.amber),
+                      side: BorderSide(color: AppColors.amber),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8),
@@ -459,7 +459,7 @@ class _FarmProfileScreenState extends State<FarmProfileScreen> {
                         icon: const Icon(Icons.backup_outlined, size: 18),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppColors.green,
-                          side: const BorderSide(color: AppColors.green),
+                          side: BorderSide(color: AppColors.green),
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(8),
