@@ -1,0 +1,675 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hatch2Revenue — Coordinator Command Center</title>
+<link rel="icon" type="image/png" href="logo.png" />
+<style>
+  @font-face{font-family:'Poppins';src:url('fonts/Poppins-SemiBold.ttf') format('truetype');font-weight:600;font-display:swap}
+  @font-face{font-family:'Poppins';src:url('fonts/Poppins-Bold.ttf') format('truetype');font-weight:700;font-display:swap}
+  @font-face{font-family:'Poppins';src:url('fonts/Poppins-ExtraBold.ttf') format('truetype');font-weight:800;font-display:swap}
+  @font-face{font-family:'Inter';src:url('fonts/Inter-Regular.ttf') format('truetype');font-weight:400;font-display:swap}
+  @font-face{font-family:'Inter';src:url('fonts/Inter-Medium.ttf') format('truetype');font-weight:500;font-display:swap}
+  @font-face{font-family:'Inter';src:url('fonts/Inter-SemiBold.ttf') format('truetype');font-weight:600;font-display:swap}
+  @font-face{font-family:'Inter';src:url('fonts/Inter-Bold.ttf') format('truetype');font-weight:700;font-display:swap}
+  :root{
+    /* Hatch2Revenue / FarmNest light theme */
+    --bg:#F7FAF7; --panel:#FFFFFF; --panel2:#EEF4EE; --line:#E5E7EB;
+    --text:#1F2937; --muted:#6B7280; --dim:#9CA3AF;
+    --green:#2E7D32; --amber:#EF6C00; --blue:#1E88E5; --red:#E53935;
+    --purple:#7E57C2; --teal:#00897B;
+    --radius:14px;
+    --display:'Poppins','Segoe UI',system-ui,sans-serif;
+    --sans:'Inter','Segoe UI',system-ui,-apple-system,Roboto,sans-serif;
+    --mono:var(--sans);
+    --glow:#E7F2E7;
+  }
+  :root[data-theme="dark"]{
+    /* FarmNest night: deep green-tinted surfaces */
+    --bg:#10160F; --panel:#1A231A; --panel2:#24301F; --line:#2E3B2E;
+    --text:#F1F5F0; --muted:#9CA3AF; --dim:#6B7280; --glow:#18240F;
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none !important}   /* author display rules must not override the hidden attribute */
+  html,body{margin:0;height:100%}
+  body{background:radial-gradient(1200px 620px at 82% -12%,var(--glow) 0%,transparent 55%),var(--bg);
+    color:var(--text);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+  h1,h2{font-family:var(--display)}
+  .mono,.tbl td.num,.surv,.amt,.wstat b,.statline b,.bar .bh b,.kpi .v,.invite b{font-variant-numeric:tabular-nums}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:0 1px 2px rgba(16,40,16,.04)}
+
+  #login{min-height:100vh;display:grid;place-items:center;padding:24px}
+  .login-box{width:100%;max-width:390px;padding:32px 28px;position:relative}
+  .themebtn{padding:6px 9px;font-size:14px;line-height:1}
+  .login-box .themebtn{position:absolute;top:14px;right:14px}
+  .brand{display:flex;align-items:center;gap:12px}
+  .brand .dot{width:40px;height:40px;background:url('logo.png') center/contain no-repeat;flex:none}
+  .brand h1{font-size:18px;margin:0;letter-spacing:.2px}
+  .brand small{color:var(--muted)}
+  .sub{color:var(--muted);font-size:13px;margin:10px 0 22px}
+  label{display:block;font-size:12px;color:var(--muted);margin:14px 0 6px;text-transform:uppercase;letter-spacing:.5px}
+  input{width:100%;padding:11px 13px;border-radius:10px;border:1px solid var(--line);
+    background:var(--panel2);color:var(--text);font-size:14px;outline:none}
+  input:focus{border-color:var(--green)}
+  button.primary{width:100%;margin-top:22px;padding:12px;border-radius:10px;border:0;
+    background:var(--green);color:#fff;font-weight:700;font-size:14px;cursor:pointer}
+  button.primary:disabled{opacity:.6}
+  .err{color:var(--red);font-size:13px;margin-top:14px;min-height:18px}
+
+  #app{max-width:1360px;margin:0 auto;padding:18px 20px 60px}
+  header.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:14px 18px;margin-bottom:12px}
+  header.top .live{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}
+  .pulse{width:9px;height:9px;border-radius:50%;background:var(--green)}
+  .spacer{flex:1}
+  .chip{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--green);
+    border:1px solid var(--line);padding:4px 9px;border-radius:999px}
+  .chip.proto{color:var(--amber);border-color:#F3D9B5}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--muted);
+    padding:7px 12px;border-radius:9px;cursor:pointer;font-size:13px}
+  button.ghost:hover{color:var(--text);border-color:var(--dim)}
+  .toggle{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .toggle button{background:transparent;border:0;color:var(--muted);padding:7px 12px;font-size:12px;cursor:pointer}
+  .toggle button.active{background:var(--panel2);color:var(--text)}
+  .disclaimer{font-size:12px;color:var(--muted);background:var(--panel2);border:1px solid var(--line);
+    border-radius:10px;padding:9px 14px;margin-bottom:16px;line-height:1.4}
+  .disclaimer b{color:var(--text)}
+
+  .kpis{display:grid;gap:12px;margin-bottom:18px}
+  .kpis.n7{grid-template-columns:repeat(7,1fr)}
+  .kpis.n6{grid-template-columns:repeat(6,1fr)}
+  .kpis.n5{grid-template-columns:repeat(5,1fr)}
+  .kpi{padding:14px 16px}
+  .kpi .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.6px}
+  .kpi .v{font-size:24px;font-weight:700;margin-top:6px;font-family:var(--display)}
+  .kpi .s{font-size:11px;color:var(--dim);margin-top:2px}
+  .v.green{color:var(--green)}.v.red{color:var(--red)}.v.amber{color:var(--amber)}.v.blue{color:var(--blue)}
+
+  .grid{display:grid;grid-template-columns:1fr 360px;gap:18px;align-items:start}
+  .panel-h{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+  .panel-h h2{font-size:13px;margin:0;text-transform:uppercase;letter-spacing:.8px;color:var(--muted)}
+  .panel-h .count{font-size:11px;color:var(--dim)}
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line);align-items:center}
+  select,input[type=search],input[type=number]{padding:7px 10px;font-size:12px;border-radius:9px;
+    border:1px solid var(--line);background:var(--panel2);color:var(--text);outline:none}
+  select:focus,input:focus{border-color:var(--green)}
+
+  .tbl{width:100%;border-collapse:collapse;font-size:13px}
+  .tbl th{position:sticky;top:0;background:var(--panel);text-align:left;color:var(--muted);
+    font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px;padding:10px 12px;
+    border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap}
+  .tbl th.num,.tbl td.num{text-align:right}
+  .tbl td{padding:10px 12px;border-bottom:1px solid var(--line)}
+  .tbl tbody tr.click{cursor:pointer}
+  .tbl tbody tr.click:hover{background:var(--panel2)}
+  .tbl tbody tr.off{opacity:.72}
+  .tbl .fn{font-weight:600}
+  .tbl .em{color:var(--muted);font-size:11px}
+  .tblwrap{max-height:560px;overflow:auto}
+  .pill{display:inline-block;font-size:10px;padding:2px 7px;border-radius:5px;margin:1px 3px 1px 0;white-space:nowrap}
+  .pill.high{background:rgba(229,57,53,.14);color:var(--red)}.pill.medium{background:rgba(239,108,0,.16);color:var(--amber)}.pill.low{background:var(--panel2);color:var(--muted)}
+  .ok{color:var(--green);font-size:12px}
+  .surv{font-family:var(--mono)}
+  .surv.good{color:var(--green)}.surv.warn{color:var(--amber)}.surv.bad{color:var(--red)}
+  .seen{font-family:var(--mono)}
+  .seen.fresh{color:var(--green)}.seen.stale{color:var(--amber)}.seen.cold{color:var(--red);font-weight:600}
+  tr.rowcold{background:rgba(229,57,53,.045)}
+
+  .side{display:flex;flex-direction:column;gap:18px}
+  .flag{padding:11px 16px;border-bottom:1px solid var(--line);display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+  .flag:hover{background:var(--panel2)}
+  .flag .sev{width:8px;height:8px;border-radius:50%;margin-top:6px;flex:none}
+  .sev.high{background:var(--red)}.sev.medium{background:var(--amber)}.sev.low{background:var(--dim)}
+  .flag .t{font-size:13px}.flag .m{font-size:11px;color:var(--dim);margin-top:2px}
+  .bar{padding:10px 16px;border-bottom:1px solid var(--line)}
+  .bar .bh{display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px}
+  .bar .bh b{font-family:var(--mono)}
+  .track{height:7px;background:var(--panel2);border-radius:4px;overflow:hidden}
+  .track > i{display:block;height:100%;background:linear-gradient(90deg,var(--teal),var(--green))}
+  .empty{padding:26px 16px;text-align:center;color:var(--dim);font-size:13px}
+
+  .feed{max-height:520px;overflow:auto}
+  .row{display:flex;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line);align-items:flex-start}
+  .row.new{animation:flash 1.4s ease-out}
+  @keyframes flash{from{background:#E7F2E7}to{background:transparent}}
+  .avatar{width:30px;height:30px;border-radius:9px;flex:none;display:grid;place-items:center;font-size:12px;font-weight:700;color:#fff}
+  .row .body{flex:1;min-width:0}
+  .row .line{font-size:14px;line-height:1.35}
+  .row .who{color:var(--muted);font-weight:600}
+  .row .meta{font-size:12px;color:var(--dim);margin-top:3px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .bchip{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:6px;padding:1px 7px}
+  .amt{font-family:var(--mono);font-size:13px;white-space:nowrap}
+  .amt.red{color:var(--red)}.amt.green{color:var(--green)}
+  .tag{font-size:10px;text-transform:uppercase;letter-spacing:.5px;padding:2px 7px;border-radius:5px;background:var(--panel2);color:var(--muted)}
+  .tag.edited{color:var(--amber)}.tag.deleted{color:var(--red)}.tag.completed{color:var(--green)}
+  .worker{padding:13px 16px;border-bottom:1px solid var(--line)}
+  .worker .wh{display:flex;align-items:center;gap:9px}
+  .worker .nm{font-size:13px;font-weight:600}.worker .rl{font-size:10px;text-transform:uppercase;color:var(--dim);letter-spacing:.5px}
+  .wstats{display:grid;grid-template-columns:repeat(2,1fr);gap:6px 14px;margin-top:9px}
+  .wstat{font-size:12px;color:var(--muted);display:flex;justify-content:space-between}
+  .wstat b{color:var(--text);font-family:var(--mono);font-weight:600}
+  .wstat b.red{color:var(--red)}.wstat b.green{color:var(--green)}
+  .statline{display:flex;justify-content:space-between;padding:9px 16px;border-bottom:1px solid var(--line);font-size:13px}
+  .statline span{color:var(--muted)}.statline b{font-family:var(--mono)}
+
+  #drill{position:fixed;inset:0;background:rgba(16,40,16,.45);backdrop-filter:blur(3px);
+    display:none;z-index:40;overflow:auto;padding:24px}
+  #drill.show{display:block}
+  .drill-card{max-width:1180px;margin:0 auto;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius)}
+  .drill-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:16px 18px;border-bottom:1px solid var(--line)}
+  .drill-top h2{margin:0;font-size:18px}
+  .editor{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:12px 18px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)}
+  .editor button.primary{width:auto;margin:0;padding:8px 14px}
+  .saved{font-size:12px}
+
+  .notice{max-width:520px;margin:80px auto;padding:32px;text-align:center}
+  .notice h2{margin:0 0 10px}.notice p{color:var(--muted);font-size:14px}
+  .invite{font-size:12px;color:var(--muted)}.invite b{color:var(--text);font-family:var(--mono);letter-spacing:2px}
+
+  @media(max-width:1080px){
+    .grid{grid-template-columns:1fr}.kpis.n7,.kpis.n6,.kpis.n5{grid-template-columns:repeat(2,1fr)}
+    .feed,.tblwrap{max-height:none}
+  }
+</style>
+</head>
+<body>
+
+<div id="login">
+  <div class="card login-box">
+    <button class="ghost themebtn" id="themeBtnLogin" title="Toggle light / dark">🌙</button>
+    <div class="brand"><div class="dot"></div>
+      <div><h1>Coordinator Command Center</h1><small class="mono">HATCH2REVENUE</small></div></div>
+    <div class="sub">Program oversight for the poultry scheme. Sign in with your coordinator account.</div>
+    <form id="loginForm">
+      <label for="email">Email</label>
+      <input id="email" type="email" autocomplete="username" required />
+      <label for="pw">Password</label>
+      <input id="pw" type="password" autocomplete="current-password" required />
+      <button class="primary" id="loginBtn" type="submit">Sign in</button>
+      <div class="err" id="loginErr"></div>
+    </form>
+  </div>
+</div>
+
+<div id="app" hidden>
+  <header class="top card">
+    <div class="brand"><div class="dot"></div>
+      <div><h1 id="title">Coordinator Command Center</h1><small class="mono" id="subtitle">HATCH2REVENUE</small></div></div>
+    <div class="live"><span class="pulse" id="pulse"></span><span id="liveTxt">connecting…</span></div>
+    <div class="spacer"></div>
+    <div class="toggle" id="modeToggle" hidden>
+      <button data-m="national" class="active">Program</button>
+      <button data-m="farm">My farm</button>
+    </div>
+    <span class="invite" id="inviteWrap" hidden>invite <b id="inviteCode">—</b></span>
+    <span class="chip" id="roleChip">—</span>
+    <button class="ghost themebtn" id="themeBtn" title="Toggle light / dark">🌙</button>
+    <button class="ghost" id="signout">Sign out</button>
+  </header>
+
+  <div id="gate"></div>
+
+  <div id="national" hidden>
+    <div class="disclaimer">
+      <b>Coordination, not enforcement.</b> Figures are self-reported by farmers and reach here after each phone syncs, so they may be delayed and are not independently verified. Flags mean <b>worth a follow-up</b>, never proof of wrongdoing. Coordinators see production and welfare only — not farmers' sales, buyers or finances.
+    </div>
+    <div class="kpis n7">
+      <div class="kpi card"><div class="k">Beneficiaries</div><div class="v" id="nFarmers">–</div><div class="s" id="nOnboard">on roster</div></div>
+      <div class="kpi card"><div class="k">Birds distributed</div><div class="v blue" id="nAlloc">–</div><div class="s">allocated</div></div>
+      <div class="kpi card"><div class="k">Birds alive</div><div class="v green" id="nAlive">–</div><div class="s" id="nDeaths">now</div></div>
+      <div class="kpi card"><div class="k">Survival</div><div class="v" id="nSurv">–</div><div class="s">onboarded flocks</div></div>
+      <div class="kpi card"><div class="k">Eggs produced</div><div class="v green" id="nEggs">–</div><div class="s">crates to date</div></div>
+      <div class="kpi card"><div class="k">Data freshness</div><div class="v" id="nFresh">–</div><div class="s" id="nFreshSub">synced last 7 days</div></div>
+      <div class="kpi card"><div class="k">Need follow-up</div><div class="v amber" id="nFlagged">–</div><div class="s">farmers</div></div>
+    </div>
+    <div class="grid">
+      <div class="card">
+        <div class="panel-h"><h2>Beneficiary registry</h2><span class="count" id="regCount"></span></div>
+        <div class="toolbar">
+          <select id="fRegion"><option value="">All regions</option></select>
+          <select id="fStatus">
+            <option value="">All beneficiaries</option>
+            <option value="risk">Needs follow-up</option>
+            <option value="notonboarded">Not onboarded</option>
+            <option value="ok">On track</option>
+          </select>
+          <input type="search" id="fSearch" placeholder="Search name / farm / region…" />
+          <div class="spacer"></div>
+          <button class="ghost" id="btnRefresh">Refresh</button>
+          <button class="ghost" id="btnCsv">Export CSV</button>
+        </div>
+        <div class="tblwrap"><table class="tbl" id="regTbl"><thead></thead><tbody></tbody></table></div>
+      </div>
+      <div class="side">
+        <div class="card">
+          <div class="panel-h"><h2>Needs follow-up</h2><span class="count" id="riskCount"></span></div>
+          <div id="riskList"><div class="empty">—</div></div>
+        </div>
+        <div class="card">
+          <div class="panel-h"><h2>By region</h2></div>
+          <div id="regionBars"><div class="empty">—</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="farm" hidden></div>
+</div>
+
+<div id="drill"><div class="drill-card" id="drillCard"></div></div>
+
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+
+const SUPA_URL = 'https://natotrarjgglxionrabw.supabase.co';
+const SUPA_KEY = 'sb_publishable_seuWLwJGKLFOIcs-i2HiEQ_RPjnrT2D';
+const supabase = createClient(SUPA_URL, SUPA_KEY, { auth:{ persistSession:true, autoRefreshToken:true }});
+
+const GHANA_REGIONS = ['Ahafo','Ashanti','Bono','Bono East','Central','Eastern','Greater Accra',
+  'North East','Northern','Oti','Savannah','Upper East','Upper West','Volta','Western','Western North'];
+const MODULES = {
+  eggs:{label:'Eggs',color:'#EF6C00'}, feed:{label:'Feed',color:'#1E88E5'},
+  mortality:{label:'Deaths',color:'#E53935'}, sales:{label:'Sales',color:'#2E7D32'},
+  vaccination:{label:'Vaccine',color:'#7E57C2'}, batch:{label:'Batches',color:'#00897B'} };
+const $ = s => document.querySelector(s);
+const el = (t,c)=>{const e=document.createElement(t); if(c) e.className=c; return e;};
+
+// Theme: light-first (matches the app); the choice persists across visits.
+const THEME_KEY='h2r_cc_theme';
+function applyTheme(t){ document.documentElement.setAttribute('data-theme', t);
+  document.querySelectorAll('.themebtn').forEach(b=> b.textContent = t==='dark' ? '☀️' : '🌙');
+  try{ localStorage.setItem(THEME_KEY, t); }catch(e){} }
+function toggleTheme(){ applyTheme(document.documentElement.getAttribute('data-theme')==='dark' ? 'light' : 'dark'); }
+applyTheme((()=>{ try{ return localStorage.getItem(THEME_KEY); }catch(e){ return null; } })() || 'light');
+document.addEventListener('click', e=>{ if(e.target.closest && e.target.closest('.themebtn')) toggleTheme(); });
+
+let isAdmin=false, membership=null, mode='national', natRows=[], natTimer=null, farmChannel=null;
+const natState={ region:'', status:'', search:'', sort:{col:'flags',dir:-1} };
+
+$('#loginForm').addEventListener('submit', async e=>{
+  e.preventDefault(); const b=$('#loginBtn'); b.disabled=true; $('#loginErr').textContent='';
+  const { error } = await supabase.auth.signInWithPassword({ email:$('#email').value.trim(), password:$('#pw').value });
+  b.disabled=false;
+  if(error){ $('#loginErr').textContent=error.message||'Sign in failed'; return; }
+  enter();
+});
+$('#signout').addEventListener('click', async ()=>{ if(natTimer) clearInterval(natTimer); await supabase.auth.signOut(); location.reload(); });
+(async()=>{ const {data:{session}}=await supabase.auth.getSession(); if(session) enter(); })();
+
+async function enter(){
+  $('#login').hidden=true; $('#app').hidden=false;
+  const {data:{session}}=await supabase.auth.getSession();
+  if(session) supabase.realtime.setAuth(session.access_token);
+
+  const [{data:adm},{data:mem}] = await Promise.all([
+    supabase.rpc('h2r_is_program_admin'),
+    supabase.rpc('h2r_my_membership')
+  ]);
+  isAdmin = adm===true; membership = mem || null;
+
+  if(!isAdmin && (!membership || membership.status!=='approved' || !['owner','manager'].includes(membership.role))){
+    $('#gate').innerHTML = notice('Access restricted',
+      'This account is not a program coordinator, and does not own or manage a farm.');
+    return;
+  }
+  $('#roleChip').textContent = isAdmin ? 'coordinator' : (membership?.role||'');
+  if(membership?.invite_code){ $('#inviteWrap').hidden=false; $('#inviteCode').textContent=membership.invite_code; }
+  if(isAdmin && membership){ $('#modeToggle').hidden=false;
+    $('#modeToggle').querySelectorAll('button').forEach(bt=> bt.onclick=()=>setMode(bt.dataset.m)); }
+
+  mode = isAdmin ? 'national' : 'farm';
+  route();
+}
+const notice=(h,b)=>`<div class="notice"><h2>${h}</h2><p>${b}</p></div>`;
+
+function setMode(m){ mode=m;
+  $('#modeToggle').querySelectorAll('button').forEach(bt=> bt.classList.toggle('active', bt.dataset.m===m));
+  route();
+}
+function route(){
+  $('#national').hidden = mode!=='national';
+  $('#farm').hidden = mode!=='farm';
+  if(natTimer){ clearInterval(natTimer); natTimer=null; }
+  if(mode==='national'){
+    $('#title').textContent='Coordinator Command Center'; $('#subtitle').textContent='HATCH2REVENUE';
+    loadNational();
+    natTimer=setInterval(loadNational, 60000);   // periodic refresh (no realtime firehose)
+  } else {
+    $('#title').textContent=membership.farm_name||'My farm'; $('#subtitle').textContent='FARM COMMAND CENTER';
+    renderFarmDetail($('#farm'), membership.farm_id, { modeKind:'owner', editable:false, showBack:false });
+  }
+}
+
+/* ================= PROGRAM (national) ================= */
+async function loadNational(){
+  const [{data:ov},{data:farms,error},{data:roster}] = await Promise.all([
+    supabase.rpc('h2r_program_overview'),
+    supabase.from('h2r_farmer_registry').select('*'),
+    supabase.from('h2r_beneficiaries').select('*')
+  ]);
+  if(error){ $('#regTbl').querySelector('tbody').innerHTML=`<tr><td class="empty" colspan="8">${error.message}</td></tr>`; }
+
+  const farmRows=(farms||[]).map(decorate);
+  const byEmail={}; farmRows.forEach(f=>{ if(f.owner_email) byEmail[f.owner_email.toLowerCase()]=f; });
+  const matched=new Set();
+  (roster||[]).forEach(b=>{ const k=(b.app_email||'').toLowerCase();
+    if(k && byEmail[k]){ matched.add(k); const f=byEmail[k]; f._roster=b;
+      f.farmer_name=f.farmer_name||b.farmer_name; f.region=f.region||b.region; f.allocated_official=f.allocated_official??b.birds_allocated; } });
+  const notOnboarded=(roster||[]).filter(b=> !(b.app_email && matched.has(b.app_email.toLowerCase())))
+    .map(b=> decorate({ _notOnboarded:true, beneficiary_id:b.id, farmer_name:b.farmer_name,
+      region:b.region, allocated_official:b.birds_allocated, enrolled_at:b.enrolled_at, owner_email:b.app_email||'' }));
+
+  natRows=[...farmRows, ...notOnboarded];
+  renderOverview(ov, farmRows, roster||[], notOnboarded.length);
+  fillRegions(natRows); renderRegistry(); renderRisk(); renderRegions();
+  $('#pulse').style.background='var(--green)';
+  $('#liveTxt').textContent='updated '+new Date().toLocaleTimeString();
+}
+function decorate(r){
+  if(r._notOnboarded){
+    return {...r, _alloc:Number(r.allocated_official||0), _alive:0,_deaths:0,_eggs:0,_crates:0,
+      _survival:null, _days:Infinity, _onboarded:false,
+      _flags:[{k:'not_onboarded',sev:'high',t:'Not onboarded'}], _risk:true };
+  }
+  const alloc=Number(r.allocated_official ?? r.birds_derived ?? 0)||0;
+  const alive=+r.birds_alive||0, deaths=+r.total_deaths||0, eggs=+r.eggs_total||0;
+  const survival = alloc>0 ? alive/alloc : null;
+  const days = r.last_active ? (Date.now()-new Date(r.last_active).getTime())/864e5 : Infinity;
+  const flags=[];
+  // sync-aware & neutral: "no recent sync" is low/medium, may just be offline
+  if(days>10) flags.push({k:'stale',sev: days>30?'medium':'low', t: days===Infinity?'No app data':`No sync ${Math.floor(days)}d`});
+  if(survival!=null && survival<0.80) flags.push({k:'mortality',sev: survival<0.65?'high':'medium', t:`Survival ${(survival*100).toFixed(0)}%`});
+  if(r.allocated_official){ const gap=r.allocated_official-(alive+deaths);
+    if(gap>Math.max(15, 0.08*r.allocated_official)) flags.push({k:'gap',sev:'medium', t:`Count gap ${gap}`}); }
+  if((r.oldest_weeks||0)>=20 && eggs===0 && alive>0) flags.push({k:'no_production',sev:'low', t:'No eggs yet'});
+  return {...r, _alloc:alloc,_alive:alive,_deaths:deaths,_eggs:eggs,_crates:eggs/30,
+    _survival:survival,_days:days,_onboarded:true,_flags:flags, _risk:flags.some(f=>f.sev!=='low')};
+}
+// Data-currency bucket for a farm's days-since-last-sync: fresh ≤7d,
+// stale 8–30d, cold >30d (or never). Neutral — a cold rural farm may
+// just be offline, not failing; it flags "verify", not "at fault".
+function freshClass(days){ return days<=7?'fresh': days<=30?'stale':'cold'; }
+function renderOverview(ov, farmRows, roster, notOnboardedCount){
+  ov=ov||{};
+  const beneficiaries = roster.length || farmRows.length;
+  const onboarded = farmRows.length;
+  const distributed = roster.reduce((s,b)=>s+(+b.birds_allocated||0),0) || (+ov.birds_allocated||0);
+  const allocOnboarded=+ov.birds_allocated||0, alive=+ov.birds_alive||0, eggs=+ov.eggs_total||0;
+  $('#nFarmers').textContent=beneficiaries.toLocaleString();
+  $('#nOnboard').textContent=`${onboarded} onboarded · ${notOnboardedCount} not`;
+  $('#nAlloc').textContent=distributed.toLocaleString();
+  $('#nAlive').textContent=alive.toLocaleString();
+  $('#nDeaths').textContent=`${(+ov.total_deaths||0).toLocaleString()} died`;
+  $('#nSurv').textContent = allocOnboarded>0 ? (alive/allocOnboarded*100).toFixed(1)+'%' : '–';
+  $('#nSurv').className='v '+survClass(allocOnboarded>0?alive/allocOnboarded:null);
+  $('#nEggs').textContent=Math.round(eggs/30).toLocaleString();
+  const fresh = farmRows.filter(f=>f._days<=7).length;
+  const fShare = onboarded>0 ? fresh/onboarded : 0;
+  $('#nFresh').textContent = onboarded>0 ? `${fresh}/${onboarded}` : '–';
+  $('#nFresh').className = 'v '+(onboarded===0?'':fShare>=0.7?'green':fShare>=0.4?'amber':'red');
+  $('#nFlagged').textContent=String(natRows.filter(r=>r._risk).length);
+}
+function fillRegions(rows){
+  const sel=$('#fRegion'); if(sel.dataset.done) return;
+  [...new Set(rows.map(r=>r.region).filter(Boolean))].sort().forEach(rg=>{ const o=el('option'); o.value=rg; o.textContent=rg; sel.appendChild(o); });
+  sel.dataset.done='1';
+  sel.onchange=e=>{ natState.region=e.target.value; renderRegistry(); };
+  $('#fStatus').onchange=e=>{ natState.status=e.target.value; renderRegistry(); };
+  let t; $('#fSearch').oninput=e=>{ clearTimeout(t); t=setTimeout(()=>{ natState.search=e.target.value.trim().toLowerCase(); renderRegistry(); },220); };
+  $('#btnCsv').onclick=exportCsv;
+  $('#btnRefresh').onclick=loadNational;
+}
+function filteredRows(){
+  let rows=natRows.slice();
+  if(natState.region) rows=rows.filter(r=>r.region===natState.region);
+  if(natState.status==='risk') rows=rows.filter(r=>r._risk);
+  if(natState.status==='notonboarded') rows=rows.filter(r=>!r._onboarded);
+  if(natState.status==='ok') rows=rows.filter(r=>r._onboarded && !r._risk);
+  if(natState.search){ const s=natState.search;
+    rows=rows.filter(r=>(r.farm_name||'').toLowerCase().includes(s)||(r.farmer_name||'').toLowerCase().includes(s)||(r.owner_email||'').toLowerCase().includes(s)||(r.region||'').toLowerCase().includes(s)); }
+  const {col,dir}=natState.sort;
+  const val=r=>({name:(r.farmer_name||r.farm_name||'').toLowerCase(),region:(r.region||'~').toLowerCase(),
+    alloc:r._alloc,alive:r._alive,survival:r._survival??-1,crates:r._crates,active:r._days,flags:r._flags.length}[col]);
+  rows.sort((a,b)=>{ const x=val(a),y=val(b); return (x>y?1:x<y?-1:0)*dir; });
+  return rows;
+}
+function renderRegistry(){
+  const rows=filteredRows();
+  const cols=[['name','Beneficiary'],['region','Region'],['alloc','Given',1],['alive','Alive',1],
+    ['survival','Survival',1],['crates','Crates',1],['active','Last seen',1],['flags','Status']];
+  const thead=$('#regTbl').querySelector('thead'); thead.innerHTML='';
+  const tr=el('tr');
+  cols.forEach(([c,label,num])=>{ const th=el('th', num?'num':''); const arrow=natState.sort.col===c?(natState.sort.dir>0?' ▲':' ▼'):'';
+    th.textContent=label+arrow; th.onclick=()=>{ const s=natState.sort; if(s.col===c) s.dir*=-1; else {s.col=c;s.dir=1;} renderRegistry(); };
+    tr.appendChild(th); });
+  thead.appendChild(tr);
+  const tb=$('#regTbl').querySelector('tbody'); tb.innerHTML='';
+  if(!rows.length){ tb.innerHTML='<tr><td class="empty" colspan="8">No beneficiaries match.</td></tr>'; }
+  rows.forEach(r=>{ const cold = r._onboarded && r._days>30;
+    const t=el('tr', (r._onboarded?'click':'off')+(cold?' rowcold':'')); if(r._onboarded) t.onclick=()=>openFarmer(r.farm_id);
+    const dash='<span class="em">—</span>';
+    t.innerHTML=`<td><div class="fn">${esc(r.farmer_name||r.farm_name||'(unnamed)')}</div><div class="em">${esc(r.owner_email||'')}</div></td>
+      <td>${esc(r.region||'—')}</td>
+      <td class="num mono">${r._alloc?r._alloc.toLocaleString():dash}</td>
+      <td class="num mono">${r._onboarded?r._alive.toLocaleString():dash}</td>
+      <td class="num">${r._onboarded?`<span class="surv ${survClass(r._survival)}">${r._survival==null?'—':(r._survival*100).toFixed(0)+'%'}</span>`:dash}</td>
+      <td class="num mono">${r._onboarded?r._crates.toFixed(0):dash}</td>
+      <td class="num ${r._onboarded?'seen '+freshClass(r._days):'em'}">${r._onboarded?(r._days===Infinity?'never':ago(r.last_active)):'—'}</td>
+      <td>${r._flags.length? r._flags.map(f=>`<span class="pill ${f.sev}">${esc(f.t)}</span>`).join('') : '<span class="ok">✓ on track</span>'}</td>`;
+    tb.appendChild(t); });
+  $('#regCount').textContent=`${rows.length} of ${natRows.length}`;
+}
+function renderRisk(){
+  const box=$('#riskList'); const items=[];
+  natRows.forEach(r=> r._flags.forEach(f=> items.push({r,f})));
+  const order={high:0,medium:1,low:2};
+  items.sort((a,b)=>order[a.f.sev]-order[b.f.sev]);
+  box.innerHTML='';
+  if(!items.length){ box.innerHTML='<div class="empty">Nothing needs a follow-up. 🎉</div>'; $('#riskCount').textContent=''; return; }
+  items.slice(0,50).forEach(({r,f})=>{ const d=el('div','flag'); if(r._onboarded) d.onclick=()=>openFarmer(r.farm_id);
+    d.innerHTML=`<span class="sev ${f.sev}"></span><div><div class="t">${esc(r.farmer_name||r.farm_name||'(unnamed)')} · ${esc(f.t)}</div>
+      <div class="m">${esc(r.region||'no region')} · ${labelKind(f.k)}</div></div>`;
+    box.appendChild(d); });
+  $('#riskCount').textContent=String(items.length);
+}
+function renderRegions(){
+  const box=$('#regionBars'); const map={};
+  natRows.forEach(r=>{ const rg=r.region||'Unassigned'; (map[rg]=map[rg]||{farmers:0,alloc:0,alive:0});
+    map[rg].farmers++; map[rg].alloc+=r._alloc; map[rg].alive+=r._alive; });
+  const entries=Object.entries(map).sort((a,b)=>b[1].farmers-a[1].farmers);
+  const maxF=Math.max(1,...entries.map(([,v])=>v.farmers));
+  box.innerHTML='';
+  if(!entries.length){ box.innerHTML='<div class="empty">—</div>'; return; }
+  entries.forEach(([rg,v])=>{ const surv=v.alloc>0?(v.alive/v.alloc*100).toFixed(0)+'%':'—';
+    const d=el('div','bar');
+    d.innerHTML=`<div class="bh"><span>${esc(rg)}</span><b>${v.farmers} · ${surv}</b></div>
+      <div class="track"><i style="width:${Math.round(v.farmers/maxF*100)}%"></i></div>`;
+    box.appendChild(d); });
+}
+function exportCsv(){
+  const rows=filteredRows();
+  const head=['Beneficiary','Farm','Region','Onboarded','Allocated','Alive','Deaths','Survival%','Crates','LastSeen','DaysSinceSync','Flags'];
+  const lines=[head.join(',')];
+  rows.forEach(r=> lines.push([r.farmer_name||'',r.farm_name||'',r.region||'', r._onboarded?'yes':'no',
+    r._alloc, r._onboarded?r._alive:'', r._onboarded?r._deaths:'', r._survival==null?'':(r._survival*100).toFixed(1),
+    r._onboarded?r._crates.toFixed(1):'', r._onboarded?(r.last_active||''):'', r._onboarded&&r._days!==Infinity?Math.floor(r._days):'', r._flags.map(f=>f.t).join('; ')]
+    .map(csv).join(',')));
+  const blob=new Blob([lines.join('\n')],{type:'text/csv'});
+  const a=el('a'); a.href=URL.createObjectURL(blob); a.download='hatch2revenue_beneficiaries.csv'; a.click();
+}
+const csv=v=>{ v=String(v??''); return /[",\n]/.test(v)?`"${v.replace(/"/g,'""')}"`:v; };
+
+/* ================= FARM DRILL-DOWN ================= */
+async function openFarmer(fid){
+  if(!fid) return;
+  const r=natRows.find(x=>x.farm_id===fid);
+  $('#drill').classList.add('show');
+  renderFarmDetail($('#drillCard'), fid, { modeKind:'admin', editable:true, showBack:true, reg:r });
+}
+function closeDrill(){ $('#drill').classList.remove('show'); if(farmChannel){ supabase.removeChannel(farmChannel); farmChannel=null; } }
+
+async function renderFarmDetail(host, fid, opts={}){
+  const admin = opts.modeKind==='admin';
+  const reg = opts.reg || natRows.find(x=>x.farm_id===fid);
+  host.innerHTML = `
+    <div class="drill-top">
+      ${opts.showBack?'<button class="ghost" id="drillBack">← Back</button>':''}
+      <div><h2>${esc(reg?.farmer_name||reg?.farm_name||'Farm')}</h2>
+        <div class="em" style="color:var(--muted);font-size:12px">${esc(reg?.owner_email||'')}${reg?.region?' · '+esc(reg.region):''}</div></div>
+      <div class="spacer"></div>
+      ${admin?'<span class="chip proto">production &amp; welfare only</span>':''}
+    </div>
+    ${opts.editable? editorHtml(reg):''}
+    <div class="kpis n5" style="padding:14px 16px 0">
+      <div class="kpi card"><div class="k">Given</div><div class="v blue" id="dAlloc">–</div></div>
+      <div class="kpi card"><div class="k">Alive</div><div class="v green" id="dAlive">–</div></div>
+      <div class="kpi card"><div class="k">Survival</div><div class="v" id="dSurv">–</div></div>
+      <div class="kpi card"><div class="k">Deaths</div><div class="v amber" id="dDeaths">–</div></div>
+      <div class="kpi card"><div class="k">Crates</div><div class="v green" id="dCrates">–</div></div>
+    </div>
+    <div class="grid" style="padding:16px">
+      <div class="card">
+        <div class="panel-h"><h2>Activity</h2><span class="count" id="dFeedCount"></span></div>
+        <div class="feed" id="dFeed"><div class="empty">Loading…</div></div>
+      </div>
+      <div class="side" id="dSide"></div>
+    </div>`;
+  if(opts.showBack) $('#drillBack').onclick=closeDrill;
+  if(opts.editable) wireEditor(host, fid, reg);
+
+  let d = reg && reg._alloc!==undefined ? reg
+        : decorate((await supabase.from('h2r_farmer_registry').select('*').eq('farm_id',fid).single()).data||{});
+  $('#dAlloc').textContent=d._alloc.toLocaleString();
+  $('#dAlive').textContent=d._alive.toLocaleString();
+  $('#dSurv').textContent=d._survival==null?'–':(d._survival*100).toFixed(0)+'%'; $('#dSurv').className='v '+survClass(d._survival);
+  $('#dDeaths').textContent=d._deaths.toLocaleString();
+  $('#dCrates').textContent=Math.round(d._crates).toLocaleString();
+
+  loadFarmFeed(fid, admin);
+  if(admin) renderHealthPanel($('#dSide'), d);
+  else { renderOwnerSide($('#dSide')); loadFarmFlags(fid); loadFarmWorkers(fid); subscribeFarm(fid); }
+}
+function renderHealthPanel(side, d){
+  const mortRate = (d._alive+d._deaths)>0 ? (d._deaths/(d._alive+d._deaths)*100) : 0;
+  side.innerHTML=`<div class="card"><div class="panel-h"><h2>Production &amp; welfare</h2></div>
+    <div class="statline"><span>Survival</span><b class="surv ${survClass(d._survival)}">${d._survival==null?'—':(d._survival*100).toFixed(0)+'%'}</b></div>
+    <div class="statline"><span>Mortality rate</span><b>${mortRate.toFixed(1)}%</b></div>
+    <div class="statline"><span>Total deaths</span><b>${d._deaths}</b></div>
+    <div class="statline"><span>Eggs produced</span><b>${Math.round(d._crates)} crates</b></div>
+    <div class="statline"><span>Feed used</span><b>${d.feed_bags||0} bags</b></div>
+    <div class="statline"><span>Vaccinations done</span><b>${d.vaccines_done||0}</b></div>
+    <div class="statline"><span>Flock age</span><b>${d.oldest_weeks!=null?d.oldest_weeks+' wks':'—'}</b></div>
+    <div class="statline"><span>Last seen</span><b class="seen ${freshClass(d._days)}">${d._days===Infinity?'never':ago(d.last_active)}</b></div></div>
+    <div class="card"><div class="panel-h"><h2>Follow-up</h2></div>
+      ${d._flags.length? d._flags.map(f=>`<div class="flag"><span class="sev ${f.sev}"></span><div><div class="t">${esc(f.t)}</div><div class="m">${labelKind(f.k)}</div></div></div>`).join(''):'<div class="empty">On track.</div>'}</div>`;
+}
+function renderOwnerSide(side){
+  side.innerHTML=`<div class="card"><div class="panel-h"><h2>Flags</h2></div><div id="dFlags"><div class="empty">—</div></div></div>
+    <div class="card"><div class="panel-h"><h2>By teammate</h2></div><div id="dWorkers"><div class="empty">—</div></div></div>`;
+}
+function editorHtml(reg){
+  return `<div class="editor">
+    <span>Region</span>
+    <select id="edRegion"><option value="">—</option>${GHANA_REGIONS.map(r=>`<option ${reg?.region===r?'selected':''}>${r}</option>`).join('')}</select>
+    <span>Official birds allocated</span>
+    <input type="number" id="edAlloc" min="0" style="width:120px" value="${reg?.allocated_official??''}" placeholder="derive"/>
+    <span>Farmer name</span><input id="edName" style="width:150px" value="${esc(reg?.farmer_name||'')}" placeholder="optional"/>
+    <button class="primary" id="edSave">Save</button><span class="saved" id="edSaved"></span>
+  </div>`;
+}
+function wireEditor(host, fid, reg){
+  host.querySelector('#edSave').onclick=async()=>{
+    const payload={ farm_id:fid, region:host.querySelector('#edRegion').value||null,
+      farmer_name:host.querySelector('#edName').value.trim()||null,
+      birds_allocated: host.querySelector('#edAlloc').value===''?null:+host.querySelector('#edAlloc').value,
+      updated_at:new Date().toISOString(), enrolled_at: reg?.enrolled_at||new Date().toISOString() };
+    const { error } = await supabase.from('h2r_program_enrollment').upsert(payload);
+    const s=host.querySelector('#edSaved');
+    if(error){ s.textContent=error.message; s.style.color='var(--red)'; return; }
+    s.textContent='Saved ✓'; s.style.color='var(--green)';
+    loadNational();
+  };
+}
+async function loadFarmFeed(fid, admin){
+  let rows, error;
+  if(admin){ const r=await supabase.rpc('h2r_admin_farm_activity',{ fid, lim:120 }); rows=r.data; error=r.error; }
+  else { const r=await supabase.from('h2r_activity_log').select('*').eq('farm_id',fid).order('logged_at',{ascending:false}).limit(120); rows=r.data; error=r.error; }
+  const box=$('#dFeed'); if(!box) return;
+  if(error){ box.innerHTML=`<div class="empty">${error.message}</div>`; return; }
+  box.innerHTML=''; rows=rows||[];
+  if(!rows.length) box.innerHTML='<div class="empty">No activity logged yet.</div>';
+  rows.forEach(r=>box.appendChild(renderRow(r)));
+  const c=$('#dFeedCount'); if(c) c.textContent=`${rows.length}`;
+}
+async function loadFarmFlags(fid){
+  const { data } = await supabase.from('h2r_activity_flags').select('*').eq('farm_id',fid).order('occurred_at',{ascending:false}).limit(30);
+  const box=$('#dFlags'); if(!box) return; box.innerHTML=''; const rows=data||[];
+  if(!rows.length){ box.innerHTML='<div class="empty">Nothing flagged.</div>'; return; }
+  rows.forEach(f=>{ const d=el('div','flag');
+    d.innerHTML=`<span class="sev ${f.severity}"></span><div><div class="t">${esc(f.summary)}</div><div class="m">${labelKind(f.kind)} · ${ago(f.occurred_at)}</div></div>`;
+    box.appendChild(d); });
+}
+async function loadFarmWorkers(fid){
+  const since=new Date(Date.now()-30*864e5).toISOString();
+  const { data,error } = await supabase.rpc('h2r_worker_accountability',{ fid, since });
+  const box=$('#dWorkers'); if(!box) return; box.innerHTML='';
+  if(error){ box.innerHTML=`<div class="empty">${error.message}</div>`; return; }
+  const rows=data||[]; if(!rows.length){ box.innerHTML='<div class="empty">No team activity.</div>'; return; }
+  rows.forEach(w=>{ const owed=+w.cash_owed||0; const d=el('div','worker');
+    d.innerHTML=`<div class="wh"><div class="avatar" style="background:${colorFor(w.actor_email)}">${initials(w.actor_email)}</div>
+      <div><div class="nm">${esc(nameOf(w.actor_email))}</div><div class="rl">${esc(w.actor_role||'')}</div></div></div>
+      <div class="wstats">
+        <div class="wstat"><span>Crates sold</span><b>${(+w.crates_sold||0).toFixed(1)}</b></div>
+        <div class="wstat"><span>Collected</span><b class="green">₵${fmt(w.cash_collected)}</b></div>
+        <div class="wstat"><span>Owed</span><b class="${owed>0.005?'red':''}">₵${fmt(owed)}</b></div>
+        <div class="wstat"><span>Records</span><b>${w.records_total}</b></div></div>`;
+    box.appendChild(d); });
+}
+function subscribeFarm(fid){
+  if(farmChannel) supabase.removeChannel(farmChannel);
+  farmChannel=supabase.channel('farm-'+fid)
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:'h2r_activity_log',filter:`farm_id=eq.${fid}`},
+      p=>{ const box=$('#dFeed'); if(!box) return; const e=box.querySelector('.empty'); if(e) box.innerHTML='';
+        const n=renderRow(p.new); n.classList.add('new'); box.prepend(n); })
+    .subscribe();
+}
+
+/* ---------- shared row renderer ---------- */
+function renderRow(r){
+  const mod=MODULES[r.module]||{color:'#5b6675'};
+  const row=el('div','row');
+  const av=el('div','avatar'); av.style.background=mod.color; av.textContent=initials(r.actor_email);
+  const body=el('div','body'); const line=el('div','line');
+  line.innerHTML=`<span class="who">${esc(nameOf(r.actor_email))}</span> ${esc(r.summary)}`;
+  const meta=el('div','meta');
+  if(r.action && r.action!=='created'){ const tg=el('span','tag '+r.action); tg.textContent=r.action; meta.appendChild(tg); }
+  if(r.batch_label){ const b=el('span','bchip'); b.textContent=r.batch_label; meta.appendChild(b); }
+  const tm=el('span'); tm.textContent=ago(r.logged_at); meta.appendChild(tm);
+  body.appendChild(line); body.appendChild(meta); row.appendChild(av); row.appendChild(body);
+  if(r.module==='sales' && r.meta){ const owed=+r.meta.owed||0; const a=el('div','amt '+(owed>0.005?'red':'green'));
+    a.textContent=owed>0.005?`owes ₵${fmt(owed)}`:`₵${fmt(r.meta.total||r.amount)}`; row.appendChild(a); }
+  else if(r.amount!=null && r.module!=='vaccination'){ const a=el('div','amt'); a.textContent=unitFor(r.module,r.amount); row.appendChild(a); }
+  return row;
+}
+const unitFor=(mod,amt)=> mod==='eggs'?`${(amt/30).toFixed(1)} cr`: mod==='feed'?`${amt} bag${amt==1?'':'s'}`:
+  mod==='mortality'?`${amt} 🕊`: mod==='batch'?`${amt} birds`: String(amt);
+
+/* ---------- helpers ---------- */
+const survClass=s=> s==null?'':(s>=0.9?'good':s>=0.8?'warn':'bad');
+const labelKind=k=>({
+  stale:'No recent sync (may be offline)', mortality:'High mortality — check welfare',
+  gap:'Allocation vs reported count — verify', no_production:'No eggs recorded yet',
+  not_onboarded:'Given birds, never onboarded',
+  no_payment:'No payment taken', credit_outstanding:'Credit outstanding',
+  big_mortality:'Large mortality entry', record_amended:'Record changed'}[k]||k);
+function nameOf(email){ if(!email) return 'someone'; const n=email.split('@')[0].replace(/[._]/g,' '); return n.replace(/\b\w/g,c=>c.toUpperCase()); }
+function initials(email){ const p=nameOf(email).split(' '); return ((p[0]?.[0]||'')+(p[1]?.[0]||'')).toUpperCase()||'?'; }
+function colorFor(x){ const c=['#2E7D32','#1E88E5','#EF6C00','#7E57C2','#00897B','#E53935']; let h=0; for(const ch of (x||'')) h=(h*31+ch.charCodeAt(0))>>>0; return c[h%c.length]; }
+function fmt(n){ n=+n||0; return n.toLocaleString('en-GH',{minimumFractionDigits:n%1?2:0,maximumFractionDigits:2}); }
+function ago(ts){ if(!ts) return 'never'; const s=(Date.now()-new Date(ts).getTime())/1000;
+  if(s<60) return 'just now'; if(s<3600) return Math.floor(s/60)+'m ago'; if(s<86400) return Math.floor(s/3600)+'h ago';
+  const d=Math.floor(s/86400); return d<7?d+'d ago':new Date(ts).toLocaleDateString('en-GB',{day:'numeric',month:'short'}); }
+function esc(s){ return (s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+</script>
+</body>
+</html>
