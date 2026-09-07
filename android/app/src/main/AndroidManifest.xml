@@ -9,6 +9,9 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Weather-aware egg forecast: approximate location for the local forecast. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <!-- Reminders use INEXACT alarms on purpose: exact-alarm permissions
          are denied by default on Android 14+ and draw Play review
          scrutiny, and a day-before reminder doesn't need precision. -->

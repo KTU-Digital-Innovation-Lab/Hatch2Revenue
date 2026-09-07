@@ -8,9 +8,11 @@ import '../providers/batch_provider.dart';
 import '../providers/vaccination_provider.dart';
 import '../providers/egg_production_provider.dart';
 import '../providers/mortality_provider.dart';
+import '../providers/measurement_provider.dart';
 import '../providers/financial_provider.dart';
 import '../providers/feed_provider.dart';
 import '../utils/app_colors.dart';
+import '../utils/caps.dart';
 import '../utils/currency_formatter.dart';
 import '../utils/units.dart';
 import 'quick_log/quick_log_screen.dart';
@@ -35,10 +37,13 @@ class HomeScreen extends StatelessWidget {
     final mortalityProvider = context.watch<MortalityProvider>();
     final financialProvider = context.watch<FinancialProvider>();
     final feedProvider = context.watch<FeedProvider>();
+    final measurementProvider = context.watch<MeasurementProvider>();
 
     final farmName = farmProfile.farmName.isNotEmpty ? farmProfile.farmName : 'Hatch2Revenue';
     final netProfit = financialProvider.netProfit;
     final feedKg = feedProvider.totalFeedConsumed;
+    // Workers and vets never see money on the dashboard.
+    final caps = Caps.of(context);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -140,7 +145,10 @@ class HomeScreen extends StatelessWidget {
               physics: const NeverScrollableScrollPhysics(),
               crossAxisSpacing: 12,
               mainAxisSpacing: 12,
-              childAspectRatio: 1.9,
+              // Slimmer than the hero cards elsewhere: on the dashboard
+              // these are a glanceable summary that sits UNDER the primary
+              // Quick Daily Log action, not four competing headline cards.
+              childAspectRatio: 2.7,
               children: [
                 _StatCard(
                   label: 'BIRDS ALIVE',
@@ -159,12 +167,13 @@ class HomeScreen extends StatelessWidget {
                       ? AppColors.red
                       : AppColors.cyan,
                 ),
-                _StatCard(
-                  label: 'NET PROFIT',
-                  value:
-                      '${CurrencyFormatter.currencySymbol}${netProfit.toStringAsFixed(0)}',
-                  color: netProfit >= 0 ? AppColors.cyan : AppColors.red,
-                ),
+                if (caps.canSeeMoney)
+                  _StatCard(
+                    label: 'NET PROFIT',
+                    value:
+                        '${CurrencyFormatter.currencySymbol}${netProfit.toStringAsFixed(0)}',
+                    color: netProfit >= 0 ? AppColors.cyan : AppColors.red,
+                  ),
               ],
             );
           }),
@@ -183,6 +192,7 @@ class HomeScreen extends StatelessWidget {
             feed: feedProvider,
             mortality: mortalityProvider,
             vacc: vaccProvider,
+            measurements: measurementProvider,
           ),
           const SizedBox(height: 20),
 
@@ -218,13 +228,14 @@ class HomeScreen extends StatelessWidget {
                   sub: feedKg > 0 ? '${Units.bagShort(feedKg)} bags consumed' : 'No feed data',
                   onTap: () => MainNavigation.navigateTo(context, 3),
                 ),
-                _NavCard(
-                  icon: Icons.egg_outlined,
-                  color: AppColors.cyan,
-                  title: 'Egg Production',
-                  sub: '${Units.crateShort(eggProvider.totalEggs)} total crates',
-                  onTap: () => MainNavigation.navigateTo(context, 4),
-                ),
+                if (caps.canSeeEggs)
+                  _NavCard(
+                    icon: Icons.egg_outlined,
+                    color: AppColors.cyan,
+                    title: 'Egg Production',
+                    sub: '${Units.crateShort(eggProvider.totalEggs)} total crates',
+                    onTap: () => MainNavigation.navigateTo(context, 4),
+                  ),
                 _NavCard(
                   icon: Icons.monitor_heart_outlined,
                   color: AppColors.red,
@@ -232,15 +243,16 @@ class HomeScreen extends StatelessWidget {
                   sub: '${mortalityProvider.records.length} records',
                   onTap: () => MainNavigation.navigateTo(context, 5),
                 ),
-                _NavCard(
-                  icon: Icons.payments_outlined,
-                  color: AppColors.blue,
-                  title: 'Financials',
-                  sub: financialProvider.transactions.isNotEmpty
-                      ? 'Net: ${CurrencyFormatter.currencySymbol}${netProfit.toStringAsFixed(0)}'
-                      : 'No transactions',
-                  onTap: () => MainNavigation.navigateTo(context, 6),
-                ),
+                if (caps.canSeeMoney)
+                  _NavCard(
+                    icon: Icons.payments_outlined,
+                    color: AppColors.blue,
+                    title: 'Financials',
+                    sub: financialProvider.transactions.isNotEmpty
+                        ? 'Net: ${CurrencyFormatter.currencySymbol}${netProfit.toStringAsFixed(0)}'
+                        : 'No transactions',
+                    onTap: () => MainNavigation.navigateTo(context, 6),
+                  ),
               ],
             );
           }),
@@ -261,6 +273,7 @@ class _IntelligencePanel extends StatelessWidget {
     required this.feed,
     required this.mortality,
     required this.vacc,
+    required this.measurements,
   });
 
   final BatchProvider batches;
@@ -268,6 +281,7 @@ class _IntelligencePanel extends StatelessWidget {
   final FeedProvider feed;
   final MortalityProvider mortality;
   final VaccinationProvider vacc;
+  final MeasurementProvider measurements;
 
   Color _color(InsightLevel l) => switch (l) {
         InsightLevel.critical => AppColors.red,
@@ -293,6 +307,7 @@ class _IntelligencePanel extends StatelessWidget {
       feed: feed,
       mortality: mortality,
       vacc: vacc,
+      measurements: measurements,
     );
     if (insights.isEmpty) return const SizedBox.shrink();
     final forecast = InsightsEngine.forecastEggs7(eggs);
@@ -521,22 +536,25 @@ class _StatCard extends StatelessWidget {
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: AppColors.border),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  label,
-                  style: GoogleFonts.inter(
-                    color: AppColors.textSecondary,
-                    fontSize: 9,
-                    letterSpacing: 0.8,
+            // Scale the whole label + value to fit the cell, so a slim card
+            // (or a large system font size) can never overflow it.
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    label,
+                    style: GoogleFonts.inter(
+                      color: AppColors.textSecondary,
+                      fontSize: 9,
+                      letterSpacing: 0.8,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 4),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: Text(
+                  const SizedBox(height: 4),
+                  Text(
                     value,
                     style: GoogleFonts.poppins(
                       color: AppColors.textPrimary,
@@ -544,8 +562,8 @@ class _StatCard extends StatelessWidget {
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

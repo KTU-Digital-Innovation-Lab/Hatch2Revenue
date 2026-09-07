@@ -24,6 +24,12 @@ class FinancialTransaction {
   final TransactionCategory category;
   final double amount;
   final String? description;
+  /// The record this transaction was auto-posted from (a feed log, a feed
+  /// stock purchase, an egg sale, a batch). Deleting or editing that record
+  /// removes/adjusts this transaction, so the books never keep an orphan.
+  /// Null for transactions the farmer entered by hand. Local-only, not
+  /// synced (matching the pattern used for feed_records.stockItemId).
+  final String? sourceId;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -35,6 +41,7 @@ class FinancialTransaction {
     required this.category,
     required this.amount,
     this.description,
+    this.sourceId,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) : id = id ?? const Uuid().v4(),
@@ -73,6 +80,7 @@ class FinancialTransaction {
       'category': category.index,
       'amount': amount,
       'description': description,
+      'sourceId': sourceId,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
@@ -87,6 +95,7 @@ class FinancialTransaction {
       category: TransactionCategory.values[map['category']],
       amount: map['amount'].toDouble(),
       description: map['description'],
+      sourceId: map['sourceId'],
       createdAt: DateTime.parse(map['createdAt']),
       updatedAt: DateTime.parse(map['updatedAt']),
     );
@@ -99,6 +108,7 @@ class FinancialTransaction {
     TransactionCategory? category,
     double? amount,
     String? description,
+    String? sourceId,
   }) {
     return FinancialTransaction(
       id: id,
@@ -108,6 +118,7 @@ class FinancialTransaction {
       category: category ?? this.category,
       amount: amount ?? this.amount,
       description: description ?? this.description,
+      sourceId: sourceId ?? this.sourceId,
       createdAt: createdAt,
       updatedAt: DateTime.now(),
     );

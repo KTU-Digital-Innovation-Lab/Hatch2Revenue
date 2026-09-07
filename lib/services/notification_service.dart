@@ -74,7 +74,12 @@ class NotificationService {
       iOS: iosDetails,
     );
 
-    await _notifications.show(id, title, body, details);
+    try {
+      await _notifications.show(id, title, body, details);
+    } catch (e) {
+      // A failed notification must never break the flow that triggered it.
+      debugPrint('NotificationService: show failed: $e');
+    }
   }
 
   Future<void> scheduleNotification({

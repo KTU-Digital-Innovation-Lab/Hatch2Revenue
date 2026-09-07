@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show kIsWeb, debugPrint;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'services/feedback_service.dart';
 import 'services/notification_service.dart';
 import 'services/sync_service.dart';
 import 'app.dart';
@@ -30,6 +31,10 @@ void main() async {
   // Cloud sync is optional: the app is fully usable offline and this
   // never blocks startup.
   await SyncService.initialize();
+
+  // Reads the app version and flushes any feedback queued while offline.
+  // Runs after Supabase is set up; never blocks startup.
+  await FeedbackService.instance.initialize();
 
   runApp(const PoultryApp());
 }

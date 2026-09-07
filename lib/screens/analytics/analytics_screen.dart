@@ -8,8 +8,11 @@ import '../../providers/financial_provider.dart';
 import '../../providers/mortality_provider.dart';
 import '../../providers/batch_provider.dart';
 import '../../models/mortality.dart';
+import '../../services/insights_engine.dart';
 import '../../utils/app_colors.dart';
+import '../../utils/caps.dart';
 import '../../utils/currency_formatter.dart';
+import '../../utils/html_widgets.dart';
 import '../../utils/units.dart';
 
 class AnalyticsScreen extends StatelessWidget {
@@ -17,6 +20,7 @@ class AnalyticsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final caps = Caps.of(context);
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -26,27 +30,36 @@ class AnalyticsScreen extends StatelessWidget {
             children: [
               Icon(Icons.insights, color: AppColors.amber, size: 30),
               const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Analytics', style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
-                  Text('Visualize your farm performance', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Analytics', style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.bold)),
+                    Text('Performance, productivity and forecasts', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                  ],
+                ),
               ),
             ],
           ),
           const SizedBox(height: 24),
           _buildSummaryRow(context),
           const SizedBox(height: 16),
-          _buildKpiGrid(context),
+          // Efficiency + productivity KPIs (merged in from the old
+          // separate Productivity screen).
+          _buildEfficiencyGrid(context),
+          const SizedBox(height: 16),
+          _buildInterpretCard(context),
           const SizedBox(height: 16),
           _ChartCard(title: '7-Day Egg Forecast', icon: Icons.online_prediction, child: _ForecastCard()),
           const SizedBox(height: 16),
           _ChartCard(title: 'Egg Production — Crates (Last 10)', icon: Icons.egg_outlined, child: _EggProductionChart()),
+          // Money views only for roles allowed to see money (owner/manager).
+          if (caps.canSeeMoney) ...[
+            const SizedBox(height: 16),
+            _ChartCard(title: 'Financial Breakdown', icon: Icons.account_balance_wallet_outlined, child: _FinancialBars()),
+          ],
           const SizedBox(height: 16),
-          _ChartCard(title: 'Financial Breakdown', icon: Icons.account_balance_wallet_outlined, child: _FinancialPieChart()),
-          const SizedBox(height: 16),
-          _ChartCard(title: 'Mortality by Cause', icon: Icons.warning_amber_rounded, child: _MortalityPieChart()),
+          _ChartCard(title: 'Mortality by Cause', icon: Icons.warning_amber_rounded, child: _MortalityBars()),
           const SizedBox(height: 80),
         ],
       ),
@@ -54,6 +67,7 @@ class AnalyticsScreen extends StatelessWidget {
   }
 
   Widget _buildSummaryRow(BuildContext context) {
+    final caps = Caps.of(context);
     final batches = context.watch<BatchProvider>().batches;
     final eggs = context.watch<EggProductionProvider>();
     final fin = context.watch<FinancialProvider>();
@@ -63,67 +77,150 @@ class AnalyticsScreen extends StatelessWidget {
         Expanded(child: _MiniStat(label: 'BATCHES', value: '${batches.length}', color: AppColors.amber)),
         const SizedBox(width: 10),
         Expanded(child: _MiniStat(label: 'TOTAL CRATES', value: Units.crateShort(eggs.totalEggs), color: AppColors.green)),
-        const SizedBox(width: 10),
-        Expanded(child: _MiniStat(label: 'NET PROFIT', value: '${CurrencyFormatter.currencySymbol}${fin.netProfit.toStringAsFixed(0)}', color: fin.netProfit >= 0 ? AppColors.cyan : AppColors.red)),
+        if (caps.canSeeMoney) ...[
+          const SizedBox(width: 10),
+          Expanded(child: _MiniStat(label: 'NET PROFIT', value: '${CurrencyFormatter.currencySymbol}${fin.netProfit.toStringAsFixed(0)}', color: fin.netProfit >= 0 ? AppColors.cyan : AppColors.red)),
+        ],
       ],
     );
   }
 
-  /// Farm-performance KPIs: laying rate, mortality rate, FCR, cost per crate.
-  Widget _buildKpiGrid(BuildContext context) {
-    final batchProvider = context.watch<BatchProvider>();
+  /// Efficiency + productivity KPIs — how well the flock turns feed and
+  /// birds into eggs, plus unit costs. Unit-cost cards are money-gated.
+  Widget _buildEfficiencyGrid(BuildContext context) {
+    final caps = Caps.of(context);
+    final batch = context.watch<BatchProvider>();
     final eggs = context.watch<EggProductionProvider>();
     final feed = context.watch<FeedProvider>();
-    final mortality = context.watch<MortalityProvider>();
+    final fin = context.watch<FinancialProvider>();
 
-    // Laying rate: eggs over the last 7 days vs. hen-days available.
-    final birds = batchProvider.totalBirds;
+    final birds = batch.totalBirds;
+    final initial = batch.totalInitialBirds;
     final eggs7 = eggs.eggsInLast(7);
-    final layingRate = birds > 0 ? (eggs7 / (birds * 7)) * 100 : 0.0;
+    final layingRate = birds > 0 ? eggs7 / (birds * 7) * 100 : 0.0;
+    final survival = initial > 0 ? birds / initial * 100 : 0.0;
+    final eggMassKg = eggs.totalEggs * 0.06;
+    final fcr = eggMassKg > 0 ? feed.totalFeedKg / eggMassKg : 0.0;
+    final eggsPerBird = initial > 0 ? eggs.totalEggs / initial : 0.0;
+    final crates = Units.eggsToCrates(eggs.totalEggs);
+    final costPerBird = birds > 0 ? fin.totalExpenses / birds : 0.0;
+    final costPerEgg = eggs.totalEggs > 0 ? fin.totalExpenses / eggs.totalEggs : 0.0;
+    final fc = InsightsEngine.feedForecast(batch, feed);
+    final feedPerBirdG = birds > 0 ? fc.dailyKg * 1000 / birds : 0.0;
+    final sym = CurrencyFormatter.currencySymbol;
 
-    // Cumulative mortality vs. birds ever housed.
-    final initialBirds = batchProvider.totalInitialBirds;
-    final mortalityRate =
-        initialBirds > 0 ? mortality.totalCount / initialBirds * 100 : 0.0;
+    return KpiGrid(children: [
+      KpiCard(
+        // Over 100% is not a great laying rate, it is a bad entry: a hen
+        // lays at most one egg a day. Flag it instead of showing green.
+        label: 'Hen-day 7d',
+        value: birds > 0
+            ? '${layingRate.toStringAsFixed(1)}%${layingRate > 100.5 ? ' (check)' : ''}'
+            : '—',
+        sub: 'eggs per hen per day',
+        accentColor: layingRate > 100.5
+            ? AppColors.red
+            : layingRate >= 70
+                ? AppColors.green
+                : layingRate >= 50
+                    ? AppColors.amber
+                    : AppColors.red,
+      ),
+      KpiCard(
+        label: 'Survival',
+        value: initial > 0
+            ? '${survival.toStringAsFixed(1)}%${survival > 100.5 ? ' (check)' : ''}'
+            : '—',
+        sub: '$birds of $initial birds',
+        accentColor: survival > 100.5
+            ? AppColors.red
+            : survival >= 95
+                ? AppColors.green
+                : survival >= 90
+                    ? AppColors.amber
+                    : AppColors.red,
+      ),
+      KpiCard(
+        label: 'FCR',
+        value: fcr > 0 ? fcr.toStringAsFixed(2) : '—',
+        sub: 'feed per egg, lower better',
+        accentColor: fcr > 0 && fcr < 2.3 ? AppColors.green : AppColors.amber,
+      ),
+      KpiCard(
+        label: 'Eggs per bird',
+        value: eggsPerBird > 0 ? eggsPerBird.toStringAsFixed(0) : '—',
+        sub: 'to date',
+        accentColor: AppColors.cyan,
+      ),
+      KpiCard(
+        label: 'Crates produced',
+        value: crates > 0 ? crates.toStringAsFixed(0) : '—',
+        accentColor: AppColors.amber,
+      ),
+      KpiCard(
+        label: 'Feed/bird·day',
+        value: feedPerBirdG > 0 ? '${feedPerBirdG.toStringAsFixed(0)} g' : '—',
+        accentColor: AppColors.blue,
+      ),
+      if (caps.canSeeMoney) ...[
+        KpiCard(
+          label: 'Cost per bird',
+          value: costPerBird > 0 ? '$sym${costPerBird.toStringAsFixed(2)}' : '—',
+          accentColor: AppColors.purple,
+        ),
+        KpiCard(
+          label: 'Cost per egg',
+          value: costPerEgg > 0 ? '$sym${costPerEgg.toStringAsFixed(2)}' : '—',
+          accentColor: AppColors.purple,
+        ),
+      ],
+    ]);
+  }
 
-    // FCR: kg of feed per kg of egg mass (avg egg ≈ 60 g).
+  Widget _buildInterpretCard(BuildContext context) {
+    final batch = context.watch<BatchProvider>();
+    final eggs = context.watch<EggProductionProvider>();
+    final feed = context.watch<FeedProvider>();
+
+    final birds = batch.totalBirds;
+    final initial = batch.totalInitialBirds;
+    final eggs7 = eggs.eggsInLast(7);
+    final layingRate = birds > 0 ? eggs7 / (birds * 7) * 100 : 0.0;
+    final survival = initial > 0 ? birds / initial * 100 : 0.0;
     final eggMassKg = eggs.totalEggs * 0.06;
     final fcr = eggMassKg > 0 ? feed.totalFeedKg / eggMassKg : 0.0;
 
-    // Feed cost per crate produced.
-    final costPerCrate = eggs.totalEggs > 0
-        ? feed.totalFeedCost / Units.eggsToCrates(eggs.totalEggs)
-        : 0.0;
+    return HtmlCard(
+      header: const HtmlCardHeader(
+          icon: Icons.lightbulb_outline, title: 'What this means'),
+      body: Text(
+        _interpret(layingRate, survival, fcr, birds),
+        style: TextStyle(
+            color: AppColors.textSecondary, fontSize: 13, height: 1.5),
+      ),
+    );
+  }
 
-    return Column(children: [
-      Row(children: [
-        Expanded(child: _MiniStat(
-          label: 'LAYING RATE (7D)',
-          value: birds > 0 ? '${layingRate.toStringAsFixed(1)}%' : '—',
-          color: layingRate >= 70 ? AppColors.green : layingRate >= 50 ? AppColors.amber : AppColors.red,
-        )),
-        const SizedBox(width: 10),
-        Expanded(child: _MiniStat(
-          label: 'MORTALITY RATE',
-          value: initialBirds > 0 ? '${mortalityRate.toStringAsFixed(1)}%' : '—',
-          color: mortalityRate <= 5 ? AppColors.green : mortalityRate <= 10 ? AppColors.amber : AppColors.red,
-        )),
-      ]),
-      const SizedBox(height: 10),
-      Row(children: [
-        Expanded(child: _MiniStat(
-          label: 'FCR (FEED/EGG KG)',
-          value: fcr > 0 ? fcr.toStringAsFixed(2) : '—',
-          color: fcr > 0 && fcr < 2.3 ? AppColors.green : AppColors.amber,
-        )),
-        const SizedBox(width: 10),
-        Expanded(child: _MiniStat(
-          label: 'FEED COST / CRATE',
-          value: costPerCrate > 0 ? '${CurrencyFormatter.currencySymbol}${costPerCrate.toStringAsFixed(2)}' : '—',
-          color: AppColors.purple,
-        )),
-      ]),
-    ]);
+  String _interpret(double laying, double survival, double fcr, int birds) {
+    if (birds == 0) {
+      return 'Add a flock and log eggs, feed and deaths to see your '
+          'productivity metrics here.';
+    }
+    final parts = <String>[];
+    parts.add(laying >= 70
+        ? 'Laying rate is strong at ${laying.toStringAsFixed(0)}% — a healthy layer flock.'
+        : laying >= 50
+            ? 'Laying rate of ${laying.toStringAsFixed(0)}% has room to improve; check lighting hours, feed and water.'
+            : 'Laying rate of ${laying.toStringAsFixed(0)}% is low; review feed quality, disease and flock age.');
+    parts.add(survival >= 95
+        ? 'Survival of ${survival.toStringAsFixed(0)}% is excellent.'
+        : 'Survival of ${survival.toStringAsFixed(0)}% — keep a close eye on mortality.');
+    if (fcr > 0) {
+      parts.add(fcr < 2.3
+          ? 'Feed conversion of ${fcr.toStringAsFixed(2)} is efficient.'
+          : 'Feed conversion of ${fcr.toStringAsFixed(2)} is high; reduce waste and confirm intake.');
+    }
+    return parts.join(' ');
   }
 }
 
@@ -301,7 +398,10 @@ class _EggProductionChart extends StatelessWidget {
   }
 }
 
-class _FinancialPieChart extends StatelessWidget {
+// Income vs expenses read better as two horizontal bars than as a pie:
+// the question is "how much bigger is one than the other", which a bar
+// answers at a glance and a pie does not.
+class _FinancialBars extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fin = context.watch<FinancialProvider>();
@@ -309,45 +409,67 @@ class _FinancialPieChart extends StatelessWidget {
     final income = fin.totalIncome;
     final expenses = fin.totalExpenses;
     if (income == 0 && expenses == 0) return const _EmptyChart(message: 'No financial data yet');
+    final max = income > expenses ? income : expenses;
+    final sym = CurrencyFormatter.currencySymbol;
 
-    return Row(
+    return Column(
       children: [
-        SizedBox(
-          height: 150,
-          width: 150,
-          child: PieChart(PieChartData(
-            sections: [
-              if (income > 0) PieChartSectionData(value: income, color: AppColors.green, title: '', radius: 60),
-              if (expenses > 0) PieChartSectionData(value: expenses, color: AppColors.red, title: '', radius: 60),
-            ],
-            sectionsSpace: 2,
-            centerSpaceRadius: 30,
-          )),
-        ),
-        const SizedBox(width: 16),
-        Expanded(child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _LegendItem(color: AppColors.green, label: 'Income', value: '${CurrencyFormatter.currencySymbol}${income.toStringAsFixed(0)}'),
-            const SizedBox(height: 10),
-            _LegendItem(color: AppColors.red, label: 'Expenses', value: '${CurrencyFormatter.currencySymbol}${expenses.toStringAsFixed(0)}'),
-            const SizedBox(height: 10),
-            // Not a pie slice — derived value. Amber (not expense-red)
-            // when negative so it can't be confused with Expenses.
-            _LegendItem(
-              color: fin.netProfit >= 0 ? AppColors.cyan : AppColors.amber,
-              label: fin.netProfit >= 0 ? 'Net Profit' : 'Net Loss',
-              value:
-                  '${fin.netProfit < 0 ? '-' : ''}${CurrencyFormatter.currencySymbol}${fin.netProfit.abs().toStringAsFixed(0)}',
-            ),
-          ],
-        )),
+        _HBar(label: 'Income', valueLabel: '$sym${income.toStringAsFixed(0)}', fraction: max > 0 ? income / max : 0, color: AppColors.green),
+        _HBar(label: 'Expenses', valueLabel: '$sym${expenses.toStringAsFixed(0)}', fraction: max > 0 ? expenses / max : 0, color: AppColors.red),
+        // Net profit is derived, not a bar. Amber (not expense-red) when
+        // negative so it cannot be confused with Expenses.
+        Row(children: [
+          Expanded(child: Text(fin.netProfit >= 0 ? 'Net profit' : 'Net loss', style: TextStyle(color: AppColors.textSecondary, fontSize: 12, fontWeight: FontWeight.w600))),
+          Text(
+            '${fin.netProfit < 0 ? '-' : ''}$sym${fin.netProfit.abs().toStringAsFixed(0)}',
+            style: TextStyle(color: fin.netProfit >= 0 ? AppColors.cyan : AppColors.amber, fontSize: 14, fontWeight: FontWeight.w800),
+          ),
+        ]),
       ],
     );
   }
 }
 
-class _MortalityPieChart extends StatelessWidget {
+/// A labelled horizontal bar: label and value on top, a proportional fill
+/// below. Replaces the pie legends across the analytics charts.
+class _HBar extends StatelessWidget {
+  final String label;
+  final String valueLabel;
+  final double fraction;
+  final Color color;
+  const _HBar({required this.label, required this.valueLabel, required this.fraction, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(children: [
+            Expanded(child: Text(label, style: TextStyle(color: AppColors.textSecondary, fontSize: 12))),
+            const SizedBox(width: 8),
+            Text(valueLabel, style: TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.w700)),
+          ]),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: fraction.clamp(0.0, 1.0),
+              minHeight: 8,
+              backgroundColor: AppColors.border,
+              valueColor: AlwaysStoppedAnimation(color),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// Deaths by cause as ranked horizontal bars (largest first), so the
+// dominant cause is obvious. A pie hid that behind similar-looking slices.
+class _MortalityBars extends StatelessWidget {
   Map<MortalityCause, Color> get _colors => {
         MortalityCause.disease: AppColors.red,
         MortalityCause.predator: AppColors.purple,
@@ -367,54 +489,20 @@ class _MortalityPieChart extends StatelessWidget {
       final cause = r.cause ?? MortalityCause.unknown;
       byCause[cause] = (byCause[cause] ?? 0) + r.count;
     }
+    final entries = byCause.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final max = entries.isEmpty ? 0 : entries.first.value;
 
-    return Row(
-      children: [
-        SizedBox(
-          height: 150,
-          width: 150,
-          child: PieChart(PieChartData(
-            sections: byCause.entries.map((e) => PieChartSectionData(
-              value: e.value.toDouble(),
-              color: _colors[e.key] ?? AppColors.textMuted,
-              title: '',
-              radius: 60,
-            )).toList(),
-            sectionsSpace: 2,
-            centerSpaceRadius: 30,
-          )),
-        ),
-        const SizedBox(width: 16),
-        Expanded(child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: byCause.entries.map((e) => Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: _LegendItem(
-              color: _colors[e.key] ?? AppColors.textMuted,
-              label: e.key.name[0].toUpperCase() + e.key.name.substring(1),
-              value: '${e.value}',
-            ),
-          )).toList(),
-        )),
-      ],
+    return Column(
+      children: entries
+          .map((e) => _HBar(
+                label: e.key.name[0].toUpperCase() + e.key.name.substring(1),
+                valueLabel: '${e.value}',
+                fraction: max > 0 ? e.value / max : 0,
+                color: _colors[e.key] ?? AppColors.textMuted,
+              ))
+          .toList(),
     );
-  }
-}
-
-class _LegendItem extends StatelessWidget {
-  final Color color;
-  final String label;
-  final String value;
-  const _LegendItem({required this.color, required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(children: [
-      Container(width: 10, height: 10, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2))),
-      const SizedBox(width: 8),
-      Expanded(child: Text(label, style: TextStyle(color: AppColors.textSecondary, fontSize: 12))),
-      Text(value, style: TextStyle(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.bold)),
-    ]);
   }
 }
 

@@ -5,9 +5,12 @@ import '../../providers/batch_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/theme_provider.dart';
 import '../../providers/vaccination_provider.dart';
+import '../../services/feedback_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/html_widgets.dart';
 import '../../utils/units.dart';
+import '../feedback/feedback_screen.dart';
+import '../help/help_screen.dart';
 
 /// Personalisation — appearance, readability, farm units, and start-up.
 class SettingsScreen extends StatelessWidget {
@@ -249,6 +252,73 @@ class SettingsScreen extends StatelessWidget {
             ]),
           ),
 
+          // ── Help & guide ──────────────────────────────────────────
+          HtmlCard(
+            header: const HtmlCardHeader(
+                icon: Icons.help_outline, title: 'Help'),
+            body: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const HelpScreen()),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(children: [
+                  Icon(Icons.menu_book_outlined, color: AppColors.amber),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Help & guide',
+                              style: TextStyle(
+                                  color: AppColors.textPrimary, fontSize: 14)),
+                          const SizedBox(height: 2),
+                          Text('How every part of the app works',
+                              style: TextStyle(
+                                  color: AppColors.textSecondary, fontSize: 12)),
+                        ]),
+                  ),
+                  Icon(Icons.chevron_right, color: AppColors.textMuted),
+                ]),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // ── Rate & feedback ───────────────────────────────────────
+          HtmlCard(
+            header: const HtmlCardHeader(
+                icon: Icons.star_outline_rounded, title: 'Rate this app'),
+            body: InkWell(
+              borderRadius: BorderRadius.circular(10),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const FeedbackScreen()),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Row(children: [
+                  Icon(Icons.rate_review_outlined, color: AppColors.amber),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Rate & write a review',
+                              style: TextStyle(
+                                  color: AppColors.textPrimary, fontSize: 14)),
+                          const SizedBox(height: 2),
+                          Text('Tell the developer what to improve',
+                              style: TextStyle(
+                                  color: AppColors.textSecondary, fontSize: 12)),
+                        ]),
+                  ),
+                  Icon(Icons.chevron_right, color: AppColors.textMuted),
+                ]),
+              ),
+            ),
+          ),
+
           // ── Reset ─────────────────────────────────────────────────
           const SizedBox(height: 4),
           OutlinedButton.icon(
@@ -270,7 +340,10 @@ class SettingsScreen extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           Center(
-            child: Text('Hatch2Revenue v1.6.2',
+            child: Text(
+                FeedbackService.instance.versionName.isEmpty
+                    ? 'Hatch2Revenue'
+                    : 'Hatch2Revenue v${FeedbackService.instance.versionName}',
                 style: TextStyle(color: AppColors.textMuted, fontSize: 11)),
           ),
           const SizedBox(height: 40),

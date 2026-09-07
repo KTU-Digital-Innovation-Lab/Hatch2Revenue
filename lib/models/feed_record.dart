@@ -13,6 +13,10 @@ class FeedRecord {
   final String? supplier;
   final String? batchNumber;
   final String? notes;
+  /// The feed_inventory item this consumption was drawn from, so logging
+  /// depletes that stock and deleting or editing the log restores it.
+  /// Local-only (not synced): the stock quantity itself syncs instead.
+  final String? stockItemId;
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -27,6 +31,7 @@ class FeedRecord {
     this.supplier,
     this.batchNumber,
     this.notes,
+    this.stockItemId,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) : id = id ?? const Uuid().v4(),
@@ -66,6 +71,7 @@ class FeedRecord {
       'supplier': supplier,
       'batchNumber': batchNumber,
       'notes': notes,
+      'stockItemId': stockItemId,
       'createdAt': createdAt.toIso8601String(),
       'updatedAt': updatedAt.toIso8601String(),
     };
@@ -83,6 +89,7 @@ class FeedRecord {
       supplier: map['supplier'],
       batchNumber: map['batchNumber'],
       notes: map['notes'],
+      stockItemId: map['stockItemId'],
       createdAt: DateTime.parse(map['createdAt']),
       updatedAt: DateTime.parse(map['updatedAt']),
     );
@@ -98,6 +105,7 @@ class FeedRecord {
     String? supplier,
     String? batchNumber,
     String? notes,
+    String? stockItemId,
   }) {
     return FeedRecord(
       id: id,
@@ -110,6 +118,7 @@ class FeedRecord {
       supplier: supplier ?? this.supplier,
       batchNumber: batchNumber ?? this.batchNumber,
       notes: notes ?? this.notes,
+      stockItemId: stockItemId ?? this.stockItemId,
       createdAt: createdAt,
       updatedAt: DateTime.now(),
     );

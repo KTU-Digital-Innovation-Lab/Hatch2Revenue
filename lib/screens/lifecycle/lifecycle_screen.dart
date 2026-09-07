@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../utils/caps.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -10,9 +11,13 @@ import '../../providers/egg_production_provider.dart';
 import '../../providers/feed_provider.dart';
 import '../../providers/financial_provider.dart';
 import '../../providers/mortality_provider.dart';
+import '../../providers/measurement_provider.dart';
 import '../../providers/quick_action_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../providers/vaccination_provider.dart';
+import '../../providers/poultry_house_provider.dart';
+import '../../models/poultry_house.dart';
+import '../../models/measurement.dart';
 import '../../services/notification_service.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/currency_formatter.dart';
@@ -35,8 +40,10 @@ class LifecycleScreen extends StatelessWidget {
 
         final batches = batchProvider.batches;
         final totalBirds = batches.fold(0, (s, b) => s + b.currentCount);
+        // Count by the age-derived stage, not the frozen entry type, so a
+        // flock entered as day-old chicks that is now laying is counted.
         final layerBirds = batches
-            .where((b) => b.type == BatchType.layers)
+            .where((b) => b.currentStage == BatchStage.layer)
             .fold(0, (s, b) => s + b.currentCount);
         final avgAge = batches.isEmpty
             ? '—'
@@ -51,10 +58,12 @@ class LifecycleScreen extends StatelessWidget {
                 iconImage: const AssetImage('assets/hen_glyph.png'),
                 title: 'Batch Lifecycle Tracker',
                 subtitle: 'Track breed info, entry dates, age in weeks, and stage transitions',
-                action: PrimaryBtn(
-                  label: '+ Add Batch',
-                  onPressed: () => _showAddDialog(context, batchProvider),
-                ),
+                action: Caps.of(context).canAmend
+                    ? PrimaryBtn(
+                        label: '+ Add Batch',
+                        onPressed: () => _showAddDialog(context, batchProvider),
+                      )
+                    : null,
               ),
 
               KpiGrid(children: [
@@ -75,11 +84,19 @@ class LifecycleScreen extends StatelessWidget {
                 body: batches.isEmpty
                     ? HtmlEmptyState(
                         iconImage: const AssetImage('assets/hen_glyph.png'),
-                        message: 'No batches yet. Add your first batch.',
-                        action: PrimaryBtn(label: '+ Add Batch', small: true, onPressed: () => _showAddDialog(context, batchProvider)),
+                        message: Caps.of(context).canAmend
+                            ? 'No batches yet. Add your first batch.'
+                            : 'No batches yet. The farm owner sets these up.',
+                        action: Caps.of(context).canAmend
+                            ? PrimaryBtn(label: '+ Add Batch', small: true, onPressed: () => _showAddDialog(context, batchProvider))
+                            : null,
                       )
                     : _buildTable(context, batches, batchProvider),
               ),
+
+              // Houses occupancy — only shown once at least one house
+              // exists (house creation stays inline in the add-batch form).
+              _housesCard(context, batches),
 
               const SizedBox(height: 60),
             ],
@@ -90,62 +107,114 @@ class LifecycleScreen extends StatelessWidget {
   }
 
   Widget _buildTable(BuildContext context, List<Batch> batches, BatchProvider provider) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        headingRowHeight: 36,
-        dataRowMinHeight: 46,
-        dataRowMaxHeight: 54,
-        columnSpacing: 16,
-        headingRowColor: const WidgetStatePropertyAll(Colors.transparent),
-        border: TableBorder(
-          horizontalInside: BorderSide(color: AppColors.border.withValues(alpha: 0.5), width: 0.5),
-        ),
-        columns: ['BATCH ID', 'BREED / NAME', 'AGE (WKS)', 'STAGE', 'BIRDS', 'ENTRY DATE', ' ', '']
-            .map((h) => DataColumn(
-                  label: Text(h, style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 10, letterSpacing: 1.5)),
-                ))
-            .toList(),
-        rows: batches.map((b) {
-          final stage = _stageName(b.type);
-          final stageColor = _stageColor(b.type);
-          final ageWks = (b.ageInDays / 7).toStringAsFixed(1);
-          void openDetail() => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => BatchDetailScreen(batchId: b.id),
-                ),
-              );
-          return DataRow(
-            onSelectChanged: (_) => openDetail(),
-            cells: [
-            DataCell(Text(b.name, style: GoogleFonts.inter(color: AppColors.amber, fontWeight: FontWeight.w500, fontSize: 12))),
-            DataCell(Text(b.source ?? '—', style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 12))),
-            DataCell(Text('$ageWks wks', style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 12))),
-            DataCell(StagePill(label: stage, color: stageColor)),
-            DataCell(Text('${b.currentCount}', style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 12))),
-            DataCell(Text(DateFormat('d MMM yyyy').format(b.hatchDate), style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11))),
-            DataCell(IconButton(
-              tooltip: 'View details',
-              icon: Icon(Icons.open_in_new, size: 16, color: AppColors.textSecondary),
-              onPressed: openDetail,
-            )),
-            DataCell(Row(mainAxisSize: MainAxisSize.min, children: [
-              EditBtn(onTap: () => _showEditDialog(context, b)),
-              const SizedBox(width: 4),
-              DelBtn(onTap: () => _confirmDelete(context, b, provider)),
-            ])),
-          ]);
-        }).toList(),
+    final houseProvider = context.watch<PoultryHouseProvider>();
+    final measurements = context.watch<MeasurementProvider>();
+    // A stacked, tappable card per batch rather than a wide horizontally
+    // scrolling table — on a phone the table pushed BIRDS / ENTRY DATE off
+    // the right edge. The whole card opens the batch detail.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
+      child: Column(
+        children: [
+          for (var i = 0; i < batches.length; i++) ...[
+            if (i > 0) const SizedBox(height: 8),
+            _batchCard(context, batches[i], provider, houseProvider, measurements),
+          ],
+        ],
       ),
     );
   }
 
-  String _stageName(BatchType t) {
-    switch (t) {
-      case BatchType.dayOldChicks: return 'Brooding';
-      case BatchType.growers:      return 'Grower';
-      case BatchType.layers:       return 'Layer';
-    }
+  Widget _batchCard(BuildContext context, Batch b, BatchProvider provider,
+      PoultryHouseProvider houseProvider, MeasurementProvider measurements) {
+    // Stage follows the flock's age, not the type it was entered as, so a
+    // 24-week day-old-chicks batch reads "Layer", not "Brooding".
+    final stage = b.currentStage.label;
+    final stageColor = _stageColor(b.currentStage);
+    final ageWks = (b.ageInDays / 7).toStringAsFixed(1);
+    final houseName = houseProvider.byId(b.coopId)?.name ?? '—';
+    void openDetail() => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => BatchDetailScreen(batchId: b.id)),
+        );
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: openDetail,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppColors.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.border),
+          ),
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
+                      b.name,
+                      style: GoogleFonts.inter(color: AppColors.amber, fontWeight: FontWeight.w600, fontSize: 14),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  StagePill(label: stage, color: stageColor),
+                ],
+              ),
+              const SizedBox(height: 10),
+              _kvRow('Breed / name', Text(b.source ?? '—', style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 12))),
+              const SizedBox(height: 6),
+              _kvRow('House', Text(houseName, style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 12))),
+              const SizedBox(height: 6),
+              _kvRow('Age', Text('$ageWks wks', style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 12))),
+              const SizedBox(height: 6),
+              _kvRow('Birds', Text('${b.currentCount}', style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 12))),
+              const SizedBox(height: 6),
+              _kvRow('Entry date', Text(DateFormat('d MMM yyyy').format(b.hatchDate), style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 12))),
+              // Surface the latest weight reading right in the list when the
+              // farmer has logged one, so flock monitoring isn't invisible.
+              if (measurements.latest(b.id, MeasurementType.weight) case final w?) ...[
+                const SizedBox(height: 6),
+                _kvRow('Latest weight', Text('${w.value == w.value.roundToDouble() ? w.value.toStringAsFixed(0) : w.value.toStringAsFixed(1)} g', style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 12))),
+              ],
+              if (Caps.of(context).canAmend) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    EditBtn(onTap: () => _showEditDialog(context, b)),
+                    const SizedBox(width: 4),
+                    DelBtn(onTap: () => _confirmDelete(context, b, provider)),
+                  ]),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _kvRow(String label, Widget value) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 88,
+          child: Text(
+            label.toUpperCase(),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 10, letterSpacing: 0.5, height: 1.3),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(child: Align(alignment: Alignment.centerLeft, child: value)),
+      ],
+    );
   }
 
   String _stageLabel(BatchType t) {
@@ -158,21 +227,222 @@ class LifecycleScreen extends StatelessWidget {
     }
   }
 
-  Color _stageColor(BatchType t) {
-    switch (t) {
-      case BatchType.dayOldChicks: return AppColors.amber;
-      case BatchType.growers:      return AppColors.cyan;
-      case BatchType.layers:       return AppColors.green;
+  Color _stageColor(BatchStage s) {
+    switch (s) {
+      case BatchStage.brooding: return AppColors.amber;
+      case BatchStage.grower:   return AppColors.cyan;
+      case BatchStage.layer:    return AppColors.green;
     }
+  }
+
+  /// Occupancy overview for the poultry houses. Houses are created inline
+  /// in the add-batch form; this restores the ability to SEE how full each
+  /// house is and to rename or remove one (edit/delete were create-only
+  /// after the standalone Houses screen was dropped). Hidden entirely when
+  /// no houses exist so the Batches screen stays clean.
+  Widget _housesCard(BuildContext context, List<Batch> batches) {
+    final houses = context.watch<PoultryHouseProvider>().houses;
+    if (houses.isEmpty) return const SizedBox.shrink();
+    final canAmend = Caps.of(context).canAmend;
+    return Padding(
+      padding: const EdgeInsets.only(top: 18),
+      child: HtmlCard(
+        header: HtmlCardHeader(
+          icon: Icons.home_work_outlined,
+          title: 'Poultry Houses',
+          trailing: TagChip(
+            label: '${houses.length} House${houses.length != 1 ? "s" : ""}',
+            color: AppColors.cyan,
+          ),
+        ),
+        bodyPadding: EdgeInsets.zero,
+        body: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 14),
+          child: Column(
+            children: [
+              for (var i = 0; i < houses.length; i++) ...[
+                if (i > 0) const SizedBox(height: 8),
+                _houseTile(context, houses[i], batches, canAmend),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _houseTile(
+      BuildContext context, PoultryHouse h, List<Batch> batches, bool canAmend) {
+    final assigned = batches.where((b) => b.coopId == h.id).toList();
+    final birdsIn = assigned.fold(0, (s, b) => s + b.currentCount);
+    final batchCount = assigned.length;
+    final hasCap = h.capacity > 0;
+    final pct = hasCap ? birdsIn / h.capacity : 0.0;
+    final barColor = !hasCap
+        ? AppColors.cyan
+        : pct > 1.0
+            ? AppColors.red
+            : pct > 0.9
+                ? AppColors.amber
+                : AppColors.green;
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.border),
+      ),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(h.name,
+                        style: GoogleFonts.inter(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14)),
+                    if (h.location != null && h.location!.trim().isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(h.location!,
+                          style: GoogleFonts.inter(
+                              color: AppColors.textSecondary, fontSize: 11)),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                hasCap ? '$birdsIn / ${h.capacity}' : '$birdsIn',
+                style: GoogleFonts.poppins(
+                    color: barColor, fontWeight: FontWeight.w700, fontSize: 15),
+              ),
+            ],
+          ),
+          if (hasCap) ...[
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                value: pct.clamp(0.0, 1.0),
+                minHeight: 6,
+                backgroundColor: AppColors.border,
+                valueColor: AlwaysStoppedAnimation(barColor),
+              ),
+            ),
+          ],
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  hasCap
+                      ? '$batchCount batch${batchCount == 1 ? "" : "es"} · ${(pct * 100).toStringAsFixed(0)}% full'
+                      : '$batchCount batch${batchCount == 1 ? "" : "es"} · no capacity set',
+                  style: GoogleFonts.inter(
+                      color: AppColors.textSecondary, fontSize: 11),
+                ),
+              ),
+              if (canAmend) ...[
+                EditBtn(onTap: () => _showEditHouseDialog(context, h)),
+                const SizedBox(width: 4),
+                DelBtn(onTap: () => _confirmDeleteHouse(context, h, batchCount)),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEditHouseDialog(BuildContext context, PoultryHouse h) {
+    final nameCtrl = TextEditingController(text: h.name);
+    final capCtrl = TextEditingController(text: h.capacity > 0 ? '${h.capacity}' : '');
+    final locCtrl = TextEditingController(text: h.location ?? '');
+    final provider = context.read<PoultryHouseProvider>();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Edit House'),
+        content: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            HtmlFormField(
+                label: 'House name',
+                child: TextField(controller: nameCtrl, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. House 1'))),
+            const SizedBox(height: 12),
+            HtmlFormField(
+                label: 'Capacity (birds) — optional',
+                child: TextField(controller: capCtrl, keyboardType: TextInputType.number, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. 5000'))),
+            const SizedBox(height: 12),
+            HtmlFormField(
+                label: 'Location — optional',
+                child: TextField(controller: locCtrl, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. North block'))),
+          ]),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
+          ElevatedButton(
+            onPressed: () {
+              final name = nameCtrl.text.trim();
+              if (name.isEmpty) return;
+              provider.updateHouse(h.copyWith(
+                name: name,
+                capacity: int.tryParse(capCtrl.text.trim()) ?? 0,
+                location: locCtrl.text.trim(),
+              ));
+              Navigator.pop(ctx);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmDeleteHouse(BuildContext context, PoultryHouse h, int assignedCount) {
+    final provider = context.read<PoultryHouseProvider>();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete House'),
+        content: Text(
+          assignedCount > 0
+              ? 'Delete "${h.name}"? $assignedCount batch${assignedCount == 1 ? "" : "es"} assigned to it will show no house.'
+              : 'Delete "${h.name}"?',
+          style: TextStyle(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.red),
+            onPressed: () {
+              provider.removeHouse(h.id);
+              Navigator.pop(ctx);
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showAddDialog(BuildContext context, BatchProvider provider) {
     final idCtrl    = TextEditingController();
     final breedCtrl = TextEditingController();
+    final sourceCtrl = TextEditingController();
     final countCtrl = TextEditingController();
     final ageCtrl   = TextEditingController();
     final costCtrl  = TextEditingController();
     final notesCtrl = TextEditingController();
+    final newHouseCtrl = TextEditingController();
+    const kNewHouse = '__new_house__';
+    final houses = context.read<PoultryHouseProvider>().houses;
+    String? selectedHouseId;
     BatchType selectedType = BatchType.dayOldChicks;
     DateTime selectedEntryDate = DateTime.now();
     bool autoVacc = true;
@@ -188,6 +458,31 @@ class LifecycleScreen extends StatelessWidget {
               const SizedBox(height: 12),
               HtmlFormField(label: 'Breed', child: TextField(controller: breedCtrl, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. Lohmann Brown'))),
               const SizedBox(height: 12),
+              HtmlFormField(label: 'Source of Chicks', child: TextField(controller: sourceCtrl, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. Akate Farms hatchery'))),
+              const SizedBox(height: 12),
+              HtmlFormField(
+                label: 'House — optional',
+                child: DropdownButtonFormField<String?>(
+                  initialValue: selectedHouseId,
+                  dropdownColor: AppColors.surfaceLight,
+                  style: TextStyle(color: AppColors.textPrimary),
+                  decoration: htmlInputDec(),
+                  items: [
+                    DropdownMenuItem<String?>(value: null, child: Text('No house', style: TextStyle(color: AppColors.textPrimary))),
+                    ...houses.map((h) => DropdownMenuItem<String?>(value: h.id, child: Text(h.name, style: TextStyle(color: AppColors.textPrimary)))),
+                    DropdownMenuItem<String?>(value: kNewHouse, child: Text('+ Add a new house', style: TextStyle(color: AppColors.amber))),
+                  ],
+                  onChanged: (v) => ss(() => selectedHouseId = v),
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (selectedHouseId == kNewHouse) ...[
+                HtmlFormField(
+                  label: 'New house name',
+                  child: TextField(controller: newHouseCtrl, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. House 1')),
+                ),
+                const SizedBox(height: 12),
+              ],
               HtmlFormField(
                 label: 'Entry Date',
                 child: HtmlDateTile(
@@ -256,6 +551,13 @@ class LifecycleScreen extends StatelessWidget {
                 final ageWks = int.tryParse(ageCtrl.text.trim()) ?? 0;
                 final cost   = double.tryParse(costCtrl.text.trim()) ?? 0;
                 final hatchDate = selectedEntryDate.subtract(Duration(days: ageWks * 7));
+                // Create the house inline when the farmer typed a new one.
+                String? coopId = selectedHouseId == kNewHouse ? null : selectedHouseId;
+                if (selectedHouseId == kNewHouse && newHouseCtrl.text.trim().isNotEmpty) {
+                  final h = PoultryHouse(name: newHouseCtrl.text.trim());
+                  context.read<PoultryHouseProvider>().addHouse(h);
+                  coopId = h.id;
+                }
                 final batch = Batch(
                   name: id,
                   type: selectedType,
@@ -263,6 +565,8 @@ class LifecycleScreen extends StatelessWidget {
                   currentCount: count,
                   hatchDate: hatchDate,
                   source: breedCtrl.text.trim().isEmpty ? null : breedCtrl.text.trim(),
+                  supplier: sourceCtrl.text.trim().isEmpty ? null : sourceCtrl.text.trim(),
+                  coopId: coopId,
                   initialCost: cost > 0 ? cost : null,
                   description: notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim(),
                 );
@@ -278,6 +582,7 @@ class LifecycleScreen extends StatelessWidget {
                       amount: cost,
                       batchId: batch.id,
                       description: 'Batch purchase: $id ($count birds)',
+                      sourceId: batch.id,
                     ),
                   );
                 }
@@ -346,10 +651,17 @@ class LifecycleScreen extends StatelessWidget {
   void _showEditDialog(BuildContext context, Batch batch) {
     final nameCtrl  = TextEditingController(text: batch.name);
     final breedCtrl = TextEditingController(text: batch.source ?? '');
+    final sourceCtrl = TextEditingController(text: batch.supplier ?? '');
     final countCtrl = TextEditingController(text: '${batch.currentCount}');
     final costCtrl  = TextEditingController(
         text: (batch.initialCost ?? 0) > 0 ? batch.initialCost!.toStringAsFixed(0) : '');
     final notesCtrl = TextEditingController(text: batch.description ?? '');
+    final newHouseCtrl = TextEditingController();
+    const kNewHouse = '__new_house__';
+    final houses = context.read<PoultryHouseProvider>().houses;
+    // Guard: a coopId pointing at a deleted house would break the dropdown.
+    String? selectedHouseId =
+        houses.any((h) => h.id == batch.coopId) ? batch.coopId : null;
     BatchType selectedType = batch.type;
     DateTime selectedHatchDate = batch.hatchDate;
 
@@ -364,6 +676,31 @@ class LifecycleScreen extends StatelessWidget {
               const SizedBox(height: 12),
               HtmlFormField(label: 'Breed', child: TextField(controller: breedCtrl, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. Lohmann Brown'))),
               const SizedBox(height: 12),
+              HtmlFormField(label: 'Source of Chicks', child: TextField(controller: sourceCtrl, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. Akate Farms hatchery'))),
+              const SizedBox(height: 12),
+              HtmlFormField(
+                label: 'House',
+                child: DropdownButtonFormField<String?>(
+                  initialValue: selectedHouseId,
+                  dropdownColor: AppColors.surfaceLight,
+                  style: TextStyle(color: AppColors.textPrimary),
+                  decoration: htmlInputDec(),
+                  items: [
+                    DropdownMenuItem<String?>(value: null, child: Text('No house', style: TextStyle(color: AppColors.textPrimary))),
+                    ...houses.map((h) => DropdownMenuItem<String?>(value: h.id, child: Text(h.name, style: TextStyle(color: AppColors.textPrimary)))),
+                    DropdownMenuItem<String?>(value: kNewHouse, child: Text('+ Add a new house', style: TextStyle(color: AppColors.amber))),
+                  ],
+                  onChanged: (v) => ss(() => selectedHouseId = v),
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (selectedHouseId == kNewHouse) ...[
+                HtmlFormField(
+                  label: 'New house name',
+                  child: TextField(controller: newHouseCtrl, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. House 1')),
+                ),
+                const SizedBox(height: 12),
+              ],
               HtmlFormField(
                 label: 'Hatch Date (drives age)',
                 child: HtmlDateTile(
@@ -409,9 +746,18 @@ class LifecycleScreen extends StatelessWidget {
                 if (name.isEmpty || count <= 0) return;
                 final cost  = double.tryParse(costCtrl.text.trim()) ?? 0;
                 final oldName = batch.name;
+                // Create the house inline when the farmer typed a new one.
+                String? coopId = selectedHouseId == kNewHouse ? null : selectedHouseId;
+                if (selectedHouseId == kNewHouse && newHouseCtrl.text.trim().isNotEmpty) {
+                  final h = PoultryHouse(name: newHouseCtrl.text.trim());
+                  context.read<PoultryHouseProvider>().addHouse(h);
+                  coopId = h.id;
+                }
                 context.read<BatchProvider>().updateBatch(batch.copyWith(
                   name: name,
                   source: breedCtrl.text.trim().isEmpty ? null : breedCtrl.text.trim(),
+                  supplier: sourceCtrl.text.trim().isEmpty ? null : sourceCtrl.text.trim(),
+                  coopId: coopId,
                   currentCount: count,
                   type: selectedType,
                   hatchDate: selectedHatchDate,
@@ -536,6 +882,7 @@ class LifecycleScreen extends StatelessWidget {
               context.read<FeedProvider>().removeByBatchRefs(refs);
               context.read<EggProductionProvider>().removeByBatchRefs(refs);
               context.read<MortalityProvider>().removeByBatchRefs(refs);
+              context.read<MeasurementProvider>().removeByBatchRefs(refs);
               context.read<FinancialProvider>().removeByBatchRefs(refs);
               provider.deleteBatch(batch.id);
               Navigator.pop(ctx);

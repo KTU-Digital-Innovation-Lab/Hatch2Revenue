@@ -66,6 +66,46 @@ void main() {
       expect(forecast, inInclusiveRange(650, 750)); // ≈ 100/day
     });
 
+    test('forecastNext fits elapsed days, not record positions', () {
+      // Logged on days 0, 1, 2 and then again on day 10 after a gap.
+      // The real trend is +10 eggs a day. Treating the four entries as
+      // consecutive (the pre-v1.6.3 behaviour) infers +31 a day and
+      // massively over-forecasts.
+      final p = EggProductionProvider();
+      const day0 = 0, day1 = 1, day2 = 2, day10 = 10;
+      final counts = {day0: 100, day1: 110, day2: 120, day10: 200};
+      counts.forEach((offset, eggs) {
+        p.addRecord(EggProduction(
+          batchId: 'A',
+          date: DateTime(2026, 7, 1).add(Duration(days: offset)),
+          eggCount: eggs,
+          pricePerEgg: 0,
+        ));
+      });
+      // True trend projects roughly 210..270 over the next seven days.
+      expect(p.forecastNext(7), inInclusiveRange(1600, 1760));
+    });
+
+    test('forecastNext ignores records older than the 14-day window', () {
+      final p = EggProductionProvider();
+      // An outlier two months back must not drag the trend.
+      p.addRecord(EggProduction(
+        batchId: 'A',
+        date: DateTime(2026, 5, 1),
+        eggCount: 5000,
+        pricePerEgg: 0,
+      ));
+      for (var i = 0; i < 7; i++) {
+        p.addRecord(EggProduction(
+          batchId: 'A',
+          date: DateTime(2026, 7, 1).add(Duration(days: i)),
+          eggCount: 100,
+          pricePerEgg: 0,
+        ));
+      }
+      expect(p.forecastNext(7), inInclusiveRange(650, 750));
+    });
+
     test('forecastNext never goes negative', () {
       final p = EggProductionProvider();
       // Steeply declining series.
@@ -79,6 +119,42 @@ void main() {
         ));
       }
       expect(p.forecastNext(7), greaterThanOrEqualTo(0));
+    });
+  });
+
+  group('Batch.currentStage', () {
+    Batch aged(BatchType type, int weeks) => Batch(
+          name: 'x',
+          type: type,
+          initialCount: 100,
+          currentCount: 100,
+          hatchDate: DateTime.now().subtract(Duration(days: weeks * 7)),
+        );
+
+    test('advances with age regardless of the type it was entered as', () {
+      // The reported bug: a day-old-chicks batch now 24 weeks old was
+      // still shown as brooding.
+      expect(aged(BatchType.dayOldChicks, 24).currentStage, BatchStage.layer);
+      expect(aged(BatchType.dayOldChicks, 2).currentStage, BatchStage.brooding);
+      expect(aged(BatchType.dayOldChicks, 8).currentStage, BatchStage.grower);
+    });
+
+    test('point of lay is week 16', () {
+      expect(aged(BatchType.dayOldChicks, 15).currentStage, BatchStage.grower);
+      expect(aged(BatchType.dayOldChicks, 16).currentStage, BatchStage.layer);
+    });
+
+    test('registered type acts as a floor', () {
+      // A flock the owner entered as layers is laying even if young.
+      expect(aged(BatchType.layers, 1).currentStage, BatchStage.layer);
+      // A grower entered before week 4 does not read as a chick.
+      expect(aged(BatchType.growers, 1).currentStage, BatchStage.grower);
+    });
+
+    test('labels read as farmers expect', () {
+      expect(BatchStage.brooding.label, 'Brooding');
+      expect(BatchStage.grower.label, 'Grower');
+      expect(BatchStage.layer.label, 'Layer');
     });
   });
 

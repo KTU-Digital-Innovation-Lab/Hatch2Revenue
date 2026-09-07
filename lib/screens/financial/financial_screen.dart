@@ -35,6 +35,12 @@ class FinancialScreen extends StatelessWidget {
         final exp  = finProvider.totalExpenses;
         final net  = finProvider.netProfit;
 
+        // Unit economics (Section G): what each bird and each egg has cost.
+        final birds = context.watch<BatchProvider>().totalBirds;
+        final totalEggs = context.watch<EggProductionProvider>().totalEggs;
+        final costPerBird = birds > 0 ? exp / birds : 0.0;
+        final costPerEgg  = totalEggs > 0 ? exp / totalEggs : 0.0;
+
         final expMap = <String, double>{};
         final revMap = <String, double>{};
         for (final t in txns) {
@@ -71,10 +77,12 @@ class FinancialScreen extends StatelessWidget {
                 KpiCard(label: 'Total Expenses', value: '${CurrencyFormatter.currencySymbol}${exp.toStringAsFixed(0)}', accentColor: AppColors.red),
                 KpiCard(
                   label: 'Net Profit',
-                  value: '${CurrencyFormatter.currencySymbol}${net.abs().toStringAsFixed(0)}',
+                  value: '${net < 0 ? '-' : ''}${CurrencyFormatter.currencySymbol}${net.abs().toStringAsFixed(0)}',
                   accentColor: net >= 0 ? AppColors.green : AppColors.red,
                 ),
                 KpiCard(label: 'Transactions', value: '${txns.length}', accentColor: AppColors.cyan),
+                KpiCard(label: 'Cost per Bird', value: costPerBird > 0 ? '${CurrencyFormatter.currencySymbol}${costPerBird.toStringAsFixed(2)}' : '—', accentColor: AppColors.amber),
+                KpiCard(label: 'Cost per Egg', value: costPerEgg > 0 ? '${CurrencyFormatter.currencySymbol}${costPerEgg.toStringAsFixed(2)}' : '—', accentColor: AppColors.amber),
               ]),
               const SizedBox(height: 18),
 
@@ -196,6 +204,7 @@ class FinancialScreen extends StatelessWidget {
     final sorted = [...txns]..sort((a, b) => b.date.compareTo(a.date));
     return HtmlTable(
       headers: ['Date', 'Type', 'Category', 'Amount', 'Desc', ''],
+      dates: sorted.map((t) => t.date).toList(),
       rows: sorted.map((t) {
         final isIncome = t.type == TransactionType.income;
         return [

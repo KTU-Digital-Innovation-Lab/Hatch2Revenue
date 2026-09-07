@@ -24,6 +24,8 @@ class DatabaseService {
     'egg_production',
     'financial_transactions',
     'egg_sales',
+    'measurements',
+    'poultry_houses',
   ];
 
   Future<Database> get database async {
@@ -39,12 +41,35 @@ class DatabaseService {
     _database = null;
   }
 
+  /// Schema version. Bump this and add an `if (oldVersion < n)` branch
+  /// in [_upgradeDB] for every schema change.
+  static const schemaVersion = 15;
+
+  /// Columns kept on-device only and never pushed to the cloud mirrors,
+  /// so adding one needs no server schema change. stockItemId links a feed
+  /// consumption log to the stock item it depleted; sourceId links an
+  /// auto-posted financial transaction back to the record it came from so
+  /// deleting/editing that record cleans up the money entry. The synced
+  /// data (stock quantity, the transaction itself) still propagates.
+  static const Map<String, Set<String>> localOnlyColumns = {
+    'feed_records': {'stockItemId'},
+    'financial_transactions': {'sourceId'},
+  };
+
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
+    return openAt(path);
+  }
+
+  /// Opens the database at an explicit [path] with the real onCreate and
+  /// onUpgrade callbacks. Production goes through [database]; migration
+  /// tests use this to upgrade a hand-built legacy file and check that
+  /// the farmer's rows survived.
+  Future<Database> openAt(String path) async {
     return await openDatabase(
       path,
-      version: 11,
+      version: schemaVersion,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _createDB,
       onUpgrade: _upgradeDB,
@@ -139,7 +164,25 @@ class DatabaseService {
     await db.execute(
       'CREATE INDEX IF NOT EXISTS idx_transactions_date ON financial_transactions(date)',
     );
+    // measurements only exists from v13. Earlier upgrade branches also call
+    // this (for farmers who skip releases), so guard on the table existing
+    // rather than indexing one that has not been created yet.
+    final hasMeasurements = (await db.rawQuery(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='measurements'"))
+        .isNotEmpty;
+    if (hasMeasurements) {
+      await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_measurements_batch ON measurements(batchId)',
+      );
+    }
   }
+
+  /// Runs the real migration chain against [db]. Migration tests use
+  /// this to walk a fixture up to an intermediate version before
+  /// finishing the upgrade through [openAt].
+  Future<void> runUpgradeForTest(
+          Database db, int oldVersion, int newVersion) =>
+      _upgradeDB(db, oldVersion, newVersion);
 
   Future<void> _upgradeDB(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 3) {
@@ -325,6 +368,47 @@ class DatabaseService {
         SELECT 'egg_sales', id, ? FROM egg_sales
       ''', [DateTime.now().toIso8601String()]);
     }
+    if (oldVersion < 12) {
+      // v12: converge every install on the canonical schema.
+      //
+      // Until now onCreate and the migration branches each carried their
+      // own copy of each table, so a phone that installed fresh and a
+      // phone that upgraded ended up with different column defaults.
+      // That divergence is what made saves fail on new phones in v1.0.0.
+      // Rebuild each table from [tableSchemas] so both paths agree from
+      // here on. _rebuildTable preserves every shared column, so no
+      // record is touched.
+      for (final entry in tableSchemas.entries) {
+        await _rebuildTable(db, entry.key, entry.value);
+      }
+      // Rebuilds drop secondary indexes with the old tables.
+      await _createIndexes(db);
+    }
+    if (oldVersion < 13) {
+      // v13: add the `supplier` column (source of chicks) to batches and
+      // two new synced tables — measurements (weight/temperature/water)
+      // and poultry_houses. _rebuildTable adds the column while keeping
+      // every existing batch row, and creates the new tables if absent.
+      await _rebuildTable(db, 'batches', tableSchemas['batches']!);
+      await _rebuildTable(db, 'measurements', tableSchemas['measurements']!);
+      await _rebuildTable(db, 'poultry_houses', tableSchemas['poultry_houses']!);
+      await _createIndexes(db);
+    }
+    if (oldVersion < 14) {
+      // v14: add the local-only `stockItemId` column to feed_records so a
+      // consumption log can deplete the stock item it came from and be
+      // reversed on delete/edit. _rebuildTable keeps every existing row.
+      await _rebuildTable(db, 'feed_records', tableSchemas['feed_records']!);
+      await _createIndexes(db);
+    }
+    if (oldVersion < 15) {
+      // v15: add the local-only `sourceId` column to financial_transactions
+      // so an auto-posted entry links back to the record it came from and
+      // is removed/adjusted when that record is deleted or edited.
+      await _rebuildTable(
+          db, 'financial_transactions', tableSchemas['financial_transactions']!);
+      await _createIndexes(db);
+    }
   }
 
   /// Egg sales & debtors — synced to the h2r_egg_sales cloud mirror.
@@ -360,128 +444,178 @@ class DatabaseService {
     ''');
   }
 
-  Future<void> _createDB(Database db, int version) async {
-    await db.execute('''
+  /// Canonical schema for every data table, used by BOTH the fresh
+  /// install path and the v12 convergence migration.
+  ///
+  /// Keep this the ONLY place a data table is defined. The v1.0.0 save
+  /// failures happened because onCreate and the migrations each carried
+  /// their own copy of the schema and drifted apart, leaving fresh
+  /// installs stricter than upgraded ones. One map, two consumers.
+  static const tableSchemas = <String, String>{
+    'batches': '''
       CREATE TABLE batches (
         id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
+        name TEXT NOT NULL DEFAULT '',
         description TEXT,
-        type INTEGER NOT NULL,
-        initialCount INTEGER NOT NULL,
-        currentCount INTEGER NOT NULL,
-        hatchDate TEXT NOT NULL,
+        type INTEGER NOT NULL DEFAULT 0,
+        initialCount INTEGER NOT NULL DEFAULT 0,
+        currentCount INTEGER NOT NULL DEFAULT 0,
+        hatchDate TEXT NOT NULL DEFAULT '',
         source TEXT,
+        supplier TEXT,
         initialCost REAL,
         coopId TEXT,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL,
+        createdAt TEXT NOT NULL DEFAULT '',
+        updatedAt TEXT NOT NULL DEFAULT '',
         deletedAt TEXT
       )
-    ''');
-
-    await db.execute('''
+    ''',
+    'vaccinations': '''
       CREATE TABLE vaccinations (
         id TEXT PRIMARY KEY,
-        batchId TEXT NOT NULL,
-        vaccineName TEXT NOT NULL,
-        type INTEGER NOT NULL,
-        scheduledDate TEXT NOT NULL,
+        batchId TEXT NOT NULL DEFAULT '',
+        vaccineName TEXT NOT NULL DEFAULT '',
+        type INTEGER NOT NULL DEFAULT 0,
+        scheduledDate TEXT NOT NULL DEFAULT '',
         administeredDate TEXT,
-        status INTEGER NOT NULL,
+        status INTEGER NOT NULL DEFAULT 0,
         dosage REAL,
         unit TEXT,
         administeredBy TEXT,
         notes TEXT,
-        reminderEnabled INTEGER NOT NULL,
-        reminderDaysBefore INTEGER NOT NULL,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL,
+        reminderEnabled INTEGER NOT NULL DEFAULT 0,
+        reminderDaysBefore INTEGER NOT NULL DEFAULT 1,
+        createdAt TEXT NOT NULL DEFAULT '',
+        updatedAt TEXT NOT NULL DEFAULT '',
         deletedAt TEXT
       )
-    ''');
-
-    await db.execute('''
+    ''',
+    'feed_records': '''
       CREATE TABLE feed_records (
         id TEXT PRIMARY KEY,
-        batchId TEXT NOT NULL,
-        date TEXT NOT NULL,
-        feedType INTEGER NOT NULL,
-        bagsUsed INTEGER NOT NULL,
+        batchId TEXT NOT NULL DEFAULT '',
+        date TEXT NOT NULL DEFAULT '',
+        feedType INTEGER NOT NULL DEFAULT 0,
+        bagsUsed INTEGER NOT NULL DEFAULT 0,
         kgPerBag REAL NOT NULL DEFAULT 50.0,
-        unitPricePerBag REAL NOT NULL,
+        unitPricePerBag REAL NOT NULL DEFAULT 0,
         supplier TEXT,
         batchNumber TEXT,
         notes TEXT,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL,
+        stockItemId TEXT,
+        createdAt TEXT NOT NULL DEFAULT '',
+        updatedAt TEXT NOT NULL DEFAULT '',
         deletedAt TEXT
       )
-    ''');
-
-    await db.execute('''
+    ''',
+    'feed_inventory': '''
       CREATE TABLE feed_inventory (
         id TEXT PRIMARY KEY,
-        feedTypeName TEXT NOT NULL,
-        quantityKg REAL NOT NULL,
+        feedTypeName TEXT NOT NULL DEFAULT '',
+        quantityKg REAL NOT NULL DEFAULT 0,
         unitPrice REAL NOT NULL DEFAULT 0,
-        expiryDate TEXT NOT NULL,
+        expiryDate TEXT NOT NULL DEFAULT '',
         supplier TEXT,
         batchNumber TEXT,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL,
+        createdAt TEXT NOT NULL DEFAULT '',
+        updatedAt TEXT NOT NULL DEFAULT '',
         deletedAt TEXT
       )
-    ''');
-
-    await db.execute('''
+    ''',
+    'mortality': '''
       CREATE TABLE mortality (
         id TEXT PRIMARY KEY,
-        batchId TEXT NOT NULL,
-        date TEXT NOT NULL,
-        count INTEGER NOT NULL,
+        batchId TEXT NOT NULL DEFAULT '',
+        date TEXT NOT NULL DEFAULT '',
+        count INTEGER NOT NULL DEFAULT 0,
         cause INTEGER,
         notes TEXT,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL,
+        createdAt TEXT NOT NULL DEFAULT '',
+        updatedAt TEXT NOT NULL DEFAULT '',
         deletedAt TEXT
       )
-    ''');
-
-    await db.execute('''
+    ''',
+    'egg_production': '''
       CREATE TABLE egg_production (
         id TEXT PRIMARY KEY,
-        batchId TEXT NOT NULL,
-        date TEXT NOT NULL,
-        eggCount INTEGER NOT NULL,
+        batchId TEXT NOT NULL DEFAULT '',
+        date TEXT NOT NULL DEFAULT '',
+        eggCount INTEGER NOT NULL DEFAULT 0,
         damagedCount INTEGER NOT NULL DEFAULT 0,
         pricePerEgg REAL NOT NULL DEFAULT 0,
         period TEXT,
         notes TEXT,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL,
+        createdAt TEXT NOT NULL DEFAULT '',
+        updatedAt TEXT NOT NULL DEFAULT '',
         deletedAt TEXT
       )
-    ''');
-
-    await db.execute('''
+    ''',
+    'financial_transactions': '''
       CREATE TABLE financial_transactions (
         id TEXT PRIMARY KEY,
-        date TEXT NOT NULL,
-        type INTEGER NOT NULL,
-        category INTEGER NOT NULL,
-        amount REAL NOT NULL,
+        date TEXT NOT NULL DEFAULT '',
+        type INTEGER NOT NULL DEFAULT 0,
+        category INTEGER NOT NULL DEFAULT 0,
+        amount REAL NOT NULL DEFAULT 0,
         description TEXT,
         batchId TEXT,
-        createdAt TEXT NOT NULL,
-        updatedAt TEXT NOT NULL,
+        sourceId TEXT,
+        createdAt TEXT NOT NULL DEFAULT '',
+        updatedAt TEXT NOT NULL DEFAULT '',
         deletedAt TEXT
       )
-    ''');
+    ''',
+    'egg_sales': '''
+      CREATE TABLE egg_sales (
+        id TEXT PRIMARY KEY,
+        date TEXT NOT NULL DEFAULT '',
+        buyer TEXT NOT NULL DEFAULT '',
+        eggCount INTEGER NOT NULL DEFAULT 0,
+        pricePerEgg REAL NOT NULL DEFAULT 0,
+        amountPaid REAL NOT NULL DEFAULT 0,
+        notes TEXT,
+        createdAt TEXT NOT NULL DEFAULT '',
+        updatedAt TEXT NOT NULL DEFAULT '',
+        deletedAt TEXT
+      )
+    ''',
+    // Flock monitoring: one typed reading per row (0=weight g, 1=temperature
+    // C, 2=water L). Keeps weight/temperature/water in one synced table.
+    'measurements': '''
+      CREATE TABLE measurements (
+        id TEXT PRIMARY KEY,
+        batchId TEXT NOT NULL DEFAULT '',
+        date TEXT NOT NULL DEFAULT '',
+        type INTEGER NOT NULL DEFAULT 0,
+        value REAL NOT NULL DEFAULT 0,
+        notes TEXT,
+        createdAt TEXT NOT NULL DEFAULT '',
+        updatedAt TEXT NOT NULL DEFAULT '',
+        deletedAt TEXT
+      )
+    ''',
+    // Poultry houses / coops. Batches link to one via batches.coopId.
+    'poultry_houses': '''
+      CREATE TABLE poultry_houses (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL DEFAULT '',
+        capacity INTEGER NOT NULL DEFAULT 0,
+        location TEXT,
+        notes TEXT,
+        createdAt TEXT NOT NULL DEFAULT '',
+        updatedAt TEXT NOT NULL DEFAULT '',
+        deletedAt TEXT
+      )
+    ''',
+  };
 
+  Future<void> _createDB(Database db, int version) async {
+    for (final sql in tableSchemas.values) {
+      await db.execute(sql);
+    }
     await _createSyncTables(db);
     await _createIndexes(db);
     await _createCatalogTable(db);
-    await _createEggSalesTable(db);
   }
 
   // ---------------------------------------------------------------
@@ -706,6 +840,32 @@ class DatabaseService {
       _updateSynced('mortality', mort);
 
   Future<void> deleteMortality(String id) => _softDeleteSynced('mortality', id);
+
+  // Measurements CRUD (weight / temperature / water)
+  Future<void> insertMeasurement(Map<String, dynamic> m) =>
+      _insertSynced('measurements', m);
+
+  Future<List<Map<String, dynamic>>> getAllMeasurements() =>
+      _liveRows('measurements', orderBy: 'date DESC');
+
+  Future<void> updateMeasurement(Map<String, dynamic> m) =>
+      _updateSynced('measurements', m);
+
+  Future<void> deleteMeasurement(String id) =>
+      _softDeleteSynced('measurements', id);
+
+  // Poultry houses CRUD
+  Future<void> insertPoultryHouse(Map<String, dynamic> h) =>
+      _insertSynced('poultry_houses', h);
+
+  Future<List<Map<String, dynamic>>> getAllPoultryHouses() =>
+      _liveRows('poultry_houses', orderBy: 'name ASC');
+
+  Future<void> updatePoultryHouse(Map<String, dynamic> h) =>
+      _updateSynced('poultry_houses', h);
+
+  Future<void> deletePoultryHouse(String id) =>
+      _softDeleteSynced('poultry_houses', id);
 
   // Egg Production CRUD
   Future<void> insertEggProduction(Map<String, dynamic> prod) =>

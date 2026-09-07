@@ -8,7 +8,10 @@ import 'providers/feed_provider.dart';
 import 'providers/mortality_provider.dart';
 import 'providers/egg_production_provider.dart';
 import 'providers/egg_sales_provider.dart';
+import 'providers/measurement_provider.dart';
+import 'providers/poultry_house_provider.dart';
 import 'providers/financial_provider.dart';
+import 'providers/weather_provider.dart';
 import 'providers/quick_action_provider.dart';
 import 'providers/farm_profile_provider.dart';
 import 'providers/settings_provider.dart';
@@ -28,6 +31,7 @@ import 'screens/settings/settings_screen.dart';
 import 'screens/splash_screen.dart';
 import 'utils/app_colors.dart';
 import 'utils/app_feedback.dart';
+import 'utils/caps.dart';
 
 class PoultryApp extends StatelessWidget {
   const PoultryApp({super.key});
@@ -42,7 +46,10 @@ class PoultryApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => MortalityProvider()..init()),
         ChangeNotifierProvider(create: (_) => EggProductionProvider()..init()),
         ChangeNotifierProvider(create: (_) => EggSalesProvider()..init()),
+        ChangeNotifierProvider(create: (_) => MeasurementProvider()..init()),
+        ChangeNotifierProvider(create: (_) => PoultryHouseProvider()..init()),
         ChangeNotifierProvider(create: (_) => FinancialProvider()..init()),
+        ChangeNotifierProvider(create: (_) => WeatherProvider()),
         ChangeNotifierProvider(create: (_) => QuickActionProvider()),
         ChangeNotifierProvider(create: (_) => FarmProfileProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
@@ -230,6 +237,8 @@ class _MainNavigationState extends State<MainNavigation> {
           context.read<EggProductionProvider>().reload(),
           context.read<EggSalesProvider>().reload(),
           context.read<MortalityProvider>().reload(),
+          context.read<MeasurementProvider>().reload(),
+          context.read<PoultryHouseProvider>().reload(),
           context.read<FinancialProvider>().reload(),
         ]);
       };
@@ -331,6 +340,16 @@ class _MainNavigationState extends State<MainNavigation> {
 
   bool get _onMoreScreen => !_barTabs.contains(_currentIndex);
 
+  /// Which module indices a role may reach. Owner/manager (and solo
+  /// users) get everything; workers lose the money modules; the vet
+  /// also loses eggs. Mirrors the server rules.
+  Set<int> _allowedModules(Caps c) {
+    if (c.canAmend) return const {0, 1, 2, 3, 4, 5, 6, 7, 8};
+    if (c.isVet) return const {0, 1, 2, 3, 5, 7}; // no eggs, money, analytics
+    // Worker: no financials; Analytics is allowed but hides its money views.
+    return const {0, 1, 2, 3, 4, 5, 7, 8};
+  }
+
   void _openMore() {
     showModalBottomSheet(
       context: context,
@@ -367,18 +386,20 @@ class _MainNavigationState extends State<MainNavigation> {
                 builder: (context, vacc, _) => Column(
                   children: [
                     for (final i in _moreTabs)
-                      _moreTile(
-                        ctx,
-                        icon: _icons[i],
-                        title: _titles[i],
-                        badge: i == 2 && vacc.overdueCount > 0
-                            ? vacc.overdueCount
-                            : null,
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          _setIndex(i);
-                        },
-                      ),
+                      if (_allowedModules(Caps.of(context, listen: false))
+                          .contains(i))
+                        _moreTile(
+                          ctx,
+                          icon: _icons[i],
+                          title: _titles[i],
+                          badge: i == 2 && vacc.overdueCount > 0
+                              ? vacc.overdueCount
+                              : null,
+                          onTap: () {
+                            Navigator.pop(ctx);
+                            _setIndex(i);
+                          },
+                        ),
                     _moreTile(
                       ctx,
                       icon: Icons.settings_outlined,
@@ -453,6 +474,19 @@ class _MainNavigationState extends State<MainNavigation> {
     // units change — this is what replaces the old whole-tree key.
     context.watch<SettingsProvider>();
     context.watch<ThemeProvider>();
+    // If the member's role no longer permits the tab they're on (e.g. a
+    // worker whose start screen was Financials), send them Home.
+    final allowed = _allowedModules(Caps.of(context));
+    if (!allowed.contains(_currentIndex)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !allowed.contains(_currentIndex)) {
+          setState(() {
+            _currentIndex = 0;
+            _lastIndex = 0;
+          });
+        }
+      });
+    }
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -541,6 +575,7 @@ class _MainNavigationState extends State<MainNavigation> {
 
   Widget _buildBottomBar(BuildContext context) {
     final overdue = context.watch<VaccinationProvider>().overdueCount;
+    final allowed = _allowedModules(Caps.of(context));
     return Container(
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -553,13 +588,14 @@ class _MainNavigationState extends State<MainNavigation> {
           child: Row(
             children: [
               for (var i = 0; i < _barTabs.length; i++)
-                _barItem(
-                  icon: _barIcons[i],
-                  image: _barTabs[i] == 1 ? _henGlyph : null,
-                  label: _barLabels[i],
-                  selected: _currentIndex == _barTabs[i],
-                  onTap: () => _setIndex(_barTabs[i]),
-                ),
+                if (allowed.contains(_barTabs[i]))
+                  _barItem(
+                    icon: _barIcons[i],
+                    image: _barTabs[i] == 1 ? _henGlyph : null,
+                    label: _barLabels[i],
+                    selected: _currentIndex == _barTabs[i],
+                    onTap: () => _setIndex(_barTabs[i]),
+                  ),
               _barItem(
                 icon: Icons.menu,
                 label: 'More',

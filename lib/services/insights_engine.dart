@@ -3,6 +3,10 @@ import '../providers/egg_production_provider.dart';
 import '../providers/feed_provider.dart';
 import '../providers/mortality_provider.dart';
 import '../providers/vaccination_provider.dart';
+import '../providers/measurement_provider.dart';
+import '../models/batch.dart';
+import '../models/measurement.dart';
+import 'flock_monitor_advice.dart';
 import '../utils/units.dart';
 
 enum InsightLevel { good, info, watch, warn, critical }
@@ -27,6 +31,7 @@ class InsightsEngine {
     required FeedProvider feed,
     required MortalityProvider mortality,
     required VaccinationProvider vacc,
+    required MeasurementProvider measurements,
   }) {
     final out = <Insight>[];
     final birds = batches.totalBirds;
@@ -78,19 +83,26 @@ class InsightsEngine {
       }
     }
 
-    // --- Feed stock run-out --------------------------------------
-    final stock = feed.totalStockKg;
-    final avgDaily = feed.records.isEmpty
-        ? 0.0
-        : feed.totalFeedConsumed / feed.records.length;
-    if (stock > 0 && avgDaily > 0) {
-      final days = stock / avgDaily;
-      if (days <= 7) {
-        out.add(Insight(InsightLevel.critical, 'Feed runs out in ~${days.toStringAsFixed(0)} days',
-            'Order feed now — deliveries take time.'));
-      } else if (days <= 14) {
-        out.add(Insight(InsightLevel.watch, '~${days.toStringAsFixed(0)} days of feed left',
-            'Plan your next purchase within the week.'));
+    // --- Predicted feed requirement + stock run-out --------------
+    // Forecast from flock AGE, not just past logs, so it works from day
+    // one. Brooding / grower / layer birds eat about 35 / 75 / 115 g
+    // per bird per day.
+    if (birds > 0) {
+      final fc = feedForecast(batches, feed);
+      out.add(Insight(InsightLevel.info,
+          '~${fc.next7Bags.toStringAsFixed(1)} bags of feed needed this week',
+          'Your flock needs about ${fc.dailyKg.toStringAsFixed(0)} kg a day, '
+          'roughly ${fc.next30Bags.toStringAsFixed(0)} bags over the next 30 days.'));
+      if (fc.stockKg > 0 && fc.daysLeft > 0) {
+        if (fc.daysLeft <= 7) {
+          out.add(Insight(InsightLevel.critical,
+              'Feed runs out in ~${fc.daysLeft.toStringAsFixed(0)} days',
+              'At the current flock size you need feed now — deliveries take time.'));
+        } else if (fc.daysLeft <= 14) {
+          out.add(Insight(InsightLevel.watch,
+              '~${fc.daysLeft.toStringAsFixed(0)} days of feed left',
+              'Plan your next feed purchase within the week.'));
+        }
       }
     }
     if (feed.stockAlertCount > 0) {
@@ -119,6 +131,27 @@ class InsightsEngine {
           'Overdue vaccines raise disease risk. Complete them or adjust the schedule.'));
     }
 
+    // --- Flock monitoring: weight, temperature, water ------------
+    // The readings the farmer logs now drive guidance, not just charts.
+    for (final b in batches.batches) {
+      final checks = <(String, FlockAdvice?)>[
+        ('weight', FlockMonitorAdvice.weight(
+            b, measurements.series(b.id, MeasurementType.weight))),
+        ('temperature', FlockMonitorAdvice.temperature(
+            b, measurements.series(b.id, MeasurementType.temperature))),
+        ('water intake',
+            FlockMonitorAdvice.water(measurements.series(b.id, MeasurementType.water))),
+      ];
+      for (final (metric, advice) in checks) {
+        if (advice == null || advice.level == 'good') continue;
+        out.add(Insight(
+          advice.level == 'warn' ? InsightLevel.warn : InsightLevel.watch,
+          '${b.name}: check $metric',
+          advice.message,
+        ));
+      }
+    }
+
     // Positive fallback so the panel never feels empty on a healthy farm.
     if (out.isEmpty && birds > 0) {
       out.add(const Insight(InsightLevel.good, 'All looks steady',
@@ -134,6 +167,53 @@ class InsightsEngine {
     };
     out.sort((a, b) => order[a.level]!.compareTo(order[b.level]!));
     return out;
+  }
+
+  /// Predicted feed requirement from flock size and age-based intake
+  /// (brooding / grower / layer birds eat ~35 / 75 / 115 g per bird per
+  /// day), with how long the current stock will last at that rate.
+  static ({
+    double dailyKg,
+    double next7Bags,
+    double next30Bags,
+    double daysLeft,
+    double stockKg,
+  }) feedForecast(BatchProvider batches, FeedProvider feed) {
+    double dailyG = 0;
+    for (final b in batches.batches) {
+      final gPerBird = switch (b.currentStage) {
+        BatchStage.brooding => 35,
+        BatchStage.grower => 75,
+        BatchStage.layer => 115,
+      };
+      dailyG += b.currentCount * gPerBird;
+    }
+    final textbookKg = dailyG / 1000;
+
+    // Calibrate to the farm's OWN recent consumption when we have it. The
+    // age-based rate above is a textbook starting point; real intake varies
+    // by breed, weather and feed. Blend the last week's actual average with
+    // the textbook figure, capping a wildly out-of-range value (e.g. a bulk
+    // backfill day) so the forecast tracks this farm's birds without a
+    // single odd entry throwing it off.
+    final recentDailyKg = feed.feedKgInLast(7) / 7;
+    final double dailyKg;
+    if (textbookKg > 0 && recentDailyKg > 0) {
+      final capped =
+          recentDailyKg.clamp(textbookKg * 0.3, textbookKg * 3.0);
+      dailyKg = 0.6 * capped + 0.4 * textbookKg;
+    } else {
+      dailyKg = textbookKg;
+    }
+    const kgPerBag = 50.0;
+    final stockKg = feed.totalStockKg;
+    return (
+      dailyKg: dailyKg,
+      next7Bags: dailyKg * 7 / kgPerBag,
+      next30Bags: dailyKg * 30 / kgPerBag,
+      daysLeft: dailyKg > 0 ? stockKg / dailyKg : 0.0,
+      stockKg: stockKg,
+    );
   }
 
   /// 7-day egg forecast from the trailing average with a trend nudge.

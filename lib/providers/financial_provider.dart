@@ -70,6 +70,34 @@ class FinancialProvider extends ChangeNotifier {
     }
   }
 
+  /// Removes the auto-posted transaction(s) that came from [sourceId] (a
+  /// feed log, feed stock purchase, egg sale, etc.), so deleting the source
+  /// record cleans up its money entry without a trip to Financials.
+  void removeBySource(String sourceId) {
+    final doomed = _transactions.where((t) => t.sourceId == sourceId).toList();
+    if (doomed.isEmpty) return;
+    _transactions.removeWhere((t) => t.sourceId == sourceId);
+    notifyListeners();
+    for (final t in doomed) {
+      _persist(() => DatabaseService.instance.deleteTransaction(t.id));
+    }
+  }
+
+  /// Re-points an auto-posted transaction after its source was edited:
+  /// updates the amount (and description) of the entry from [sourceId].
+  void updateBySource(String sourceId, {double? amount, String? description}) {
+    var changed = false;
+    for (var i = 0; i < _transactions.length; i++) {
+      if (_transactions[i].sourceId != sourceId) continue;
+      _transactions[i] =
+          _transactions[i].copyWith(amount: amount, description: description);
+      final row = _transactions[i];
+      changed = true;
+      _persist(() => DatabaseService.instance.updateTransaction(row.toMap()));
+    }
+    if (changed) notifyListeners();
+  }
+
   void updateTransaction(FinancialTransaction transaction) {
     final index = _transactions.indexWhere((t) => t.id == transaction.id);
     if (index != -1) {

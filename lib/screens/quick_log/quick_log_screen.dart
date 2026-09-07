@@ -112,14 +112,18 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
         cost = double.tryParse(_feedCost.text.trim()) ?? 0;
         type = _feedType;
       }
-      context.read<FeedProvider>().addRecord(FeedRecord(
-            batchId: _batch,
-            feedType: type,
-            bagsUsed: 1,
-            kgPerBag: kg,
-            unitPricePerBag: cost,
-            date: _date,
-          ));
+      final feedProv = context.read<FeedProvider>();
+      final feedRecord = FeedRecord(
+        batchId: _batch,
+        feedType: type,
+        bagsUsed: 1,
+        kgPerBag: kg,
+        unitPricePerBag: cost,
+        date: _date,
+        // Deplete the matching stock item, same as the Feed screen log.
+        stockItemId: feedProv.stockIdFor(type, feedName: feed?.feedName),
+      );
+      feedProv.addRecord(feedRecord);
       if (cost > 0) {
         fin.addTransaction(FinancialTransaction(
           date: _date,
@@ -128,6 +132,7 @@ class _QuickLogScreenState extends State<QuickLogScreen> {
           amount: cost,
           batchId: _batch,
           description: 'Feed: ${Units.bagShort(kg)} bags',
+          sourceId: feedRecord.id,
         ));
       }
       parts.add('${bags.toStringAsFixed(bags == bags.roundToDouble() ? 0 : 1)} bags feed');

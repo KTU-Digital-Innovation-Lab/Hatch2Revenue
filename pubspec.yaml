@@ -2,7 +2,7 @@ name: hatch2revenue
 description: "A comprehensive poultry farm management application for tracking birds from day-old chicks to layer stage, with vaccination scheduling, feed monitoring, mortality tracking, egg production forecasting, and financial analysis."
 publish_to: 'none'
 
-version: 1.6.2+19
+version: 1.12.1+37
 
 environment:
   sdk: ^3.11.1
@@ -50,6 +50,14 @@ dependencies:
   intl: ^0.19.0
   uuid: ^4.4.2
   shared_preferences: ^2.3.2
+
+  # App version shown in Settings and attached to in-app feedback.
+  package_info_plus: ^10.2.1
+
+  # Weather-aware egg forecast: device location + a free, keyless
+  # weather service (Open-Meteo).
+  geolocator: ^13.0.1
+  http: ^1.2.2
 
 dev_dependencies:
   flutter_test:

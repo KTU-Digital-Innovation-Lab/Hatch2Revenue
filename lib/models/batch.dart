@@ -2,6 +2,25 @@ import 'package:uuid/uuid.dart';
 
 enum BatchType { dayOldChicks, growers, layers }
 
+/// The stage a flock is actually in, derived from its age rather than
+/// the type it was registered as. A flock entered as day-old chicks
+/// becomes a grower and then a layer as it ages, without the owner
+/// having to change anything.
+enum BatchStage { brooding, grower, layer }
+
+extension BatchStageInfo on BatchStage {
+  String get label {
+    switch (this) {
+      case BatchStage.brooding:
+        return 'Brooding';
+      case BatchStage.grower:
+        return 'Grower';
+      case BatchStage.layer:
+        return 'Layer';
+    }
+  }
+}
+
 class Batch {
   final String id;
   final String name;
@@ -10,7 +29,12 @@ class Batch {
   final int initialCount;
   final int currentCount;
   final DateTime hatchDate;
+
+  /// The breed / strain of the flock (labelled "Breed" in the UI).
   final String? source;
+
+  /// Where the chicks came from — hatchery or supplier ("Source of chicks").
+  final String? supplier;
   final double? initialCost;
   final String? coopId;
   final DateTime createdAt;
@@ -25,6 +49,7 @@ class Batch {
     required this.currentCount,
     required this.hatchDate,
     this.source,
+    this.supplier,
     this.initialCost,
     this.coopId,
     DateTime? createdAt,
@@ -34,6 +59,19 @@ class Batch {
        updatedAt = updatedAt ?? DateTime.now();
 
   int get ageInDays => DateTime.now().difference(hatchDate).inDays;
+
+  /// Current stage, worked out from the flock's age. Point of lay is
+  /// 16-22 weeks, so a flock is treated as a layer from week 16. The
+  /// registered [type] is a floor: a flock the owner entered as growers
+  /// or layers never shows younger than that, even before its age would
+  /// imply it (useful when the entry date is approximate).
+  BatchStage get currentStage {
+    if (type == BatchType.layers) return BatchStage.layer;
+    final weeks = ageInDays / 7;
+    if (weeks >= 16) return BatchStage.layer;
+    if (type == BatchType.growers || weeks >= 4) return BatchStage.grower;
+    return BatchStage.brooding;
+  }
 
   int get mortalityCount => initialCount - currentCount;
 
@@ -61,6 +99,7 @@ class Batch {
       'currentCount': currentCount,
       'hatchDate': hatchDate.toIso8601String(),
       'source': source,
+      'supplier': supplier,
       'initialCost': initialCost,
       'coopId': coopId,
       'createdAt': createdAt.toIso8601String(),
@@ -78,6 +117,7 @@ class Batch {
       currentCount: map['currentCount'],
       hatchDate: DateTime.parse(map['hatchDate']),
       source: map['source'],
+      supplier: map['supplier'],
       initialCost: map['initialCost'],
       coopId: map['coopId'],
       createdAt: DateTime.parse(map['createdAt']),
@@ -93,6 +133,7 @@ class Batch {
     int? currentCount,
     DateTime? hatchDate,
     String? source,
+    String? supplier,
     double? initialCost,
     String? coopId,
   }) {
@@ -105,6 +146,7 @@ class Batch {
       currentCount: currentCount ?? this.currentCount,
       hatchDate: hatchDate ?? this.hatchDate,
       source: source ?? this.source,
+      supplier: supplier ?? this.supplier,
       initialCost: initialCost ?? this.initialCost,
       coopId: coopId ?? this.coopId,
       createdAt: createdAt,

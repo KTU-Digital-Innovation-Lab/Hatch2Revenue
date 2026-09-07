@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../utils/caps.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -12,6 +13,13 @@ import '../../utils/html_widgets.dart';
 
 class VaccinationScreen extends StatefulWidget {
   const VaccinationScreen({super.key});
+
+  /// Opens the schedule-vaccine form. When [presetBatchId] is given (the
+  /// batch hub passes it), the flock is fixed and shown locked so a dose
+  /// cannot be scheduled against the wrong batch.
+  static void showAddDialog(BuildContext context, {String? presetBatchId}) =>
+      _VaccinationScreenState._showAddDialog(context,
+          presetBatchId: presetBatchId);
   @override
   State<VaccinationScreen> createState() => _VaccinationScreenState();
 }
@@ -59,7 +67,9 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
                 icon: Icons.vaccines_outlined,
                 title: 'Vaccination Scheduler',
                 subtitle: 'Schedule vaccines, log completions, and receive alerts',
-                action: PrimaryBtn(label: '+ Schedule Vaccine', onPressed: () => _showAddDialog(context)),
+                action: Caps.of(context).canManageVaccines
+                    ? PrimaryBtn(label: '+ Schedule Vaccine', onPressed: () => _showAddDialog(context))
+                    : null,
               ),
 
               if (overdue.isNotEmpty)
@@ -194,39 +204,58 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.border),
       ),
-      child: Row(
+      // Info on its own full-width row so the due-date text can never be
+      // squeezed to a one-letter-per-line stack; the action buttons sit
+      // on a second row underneath.
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(width: 8, height: 8, decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(v.vaccineName, style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 12), overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 2),
-                Text(
-                  'Due: ${DateFormat('d MMM yyyy').format(v.scheduledDate)} · ${v.unit ?? v.typeName}',
-                  style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 10),
+          Row(
+            children: [
+              Container(width: 8, height: 8, decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle)),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(v.vaccineName, style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 12, fontWeight: FontWeight.w600), overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Due: ${DateFormat('d MMM yyyy').format(v.scheduledDate)} · ${v.unit ?? v.typeName}',
+                      style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 10),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 8),
+              VaccStatusBadge(status: status),
+            ],
           ),
-          VaccStatusBadge(status: status),
-          if (status != 'done') ...[
-            const SizedBox(width: 8),
-            GhostBtn(
-              label: 'Mark Done',
-              small: true,
-              onPressed: () {
-                provider.markAsCompleted(v.id);
-                NotificationService().cancelNotification(v.id.hashCode.abs());
-              },
+          // Workers see the schedule but can't change it; owner, manager
+          // and vet manage vaccinations.
+          if (Caps.of(context).canManageVaccines)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  if (status != 'done') ...[
+                    GhostBtn(
+                      label: 'Mark Done',
+                      small: true,
+                      onPressed: () {
+                        provider.markAsCompleted(v.id);
+                        NotificationService().cancelNotification(v.id.hashCode.abs());
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  EditBtn(onTap: () => _showEditDialog(context, v)),
+                  const SizedBox(width: 4),
+                  DelBtn(onTap: () => _confirmDelete(context, v, provider)),
+                ],
+              ),
             ),
-          ],
-          const SizedBox(width: 6),
-          EditBtn(onTap: () => _showEditDialog(context, v)),
-          const SizedBox(width: 4),
-          DelBtn(onTap: () => _confirmDelete(context, v, provider)),
         ],
       ),
     );
@@ -256,12 +285,12 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
     );
   }
 
-  void _showAddDialog(BuildContext context) {
+  static void _showAddDialog(BuildContext context, {String? presetBatchId}) {
     final nameCtrl  = TextEditingController();
     // Records reference batches by ID; 'All' means the whole flock.
     final vaccBatches = context.read<BatchProvider>().batches;
     final batchOptions = {'All': 'All', for (final b in vaccBatches) b.id: b.name};
-    String selectedBatch = 'All';
+    String selectedBatch = presetBatchId ?? 'All';
     final notesCtrl = TextEditingController();
     DateTime selectedDate = DateTime.now().add(const Duration(days: 7));
     String selectedRoute = _routes.first;
@@ -280,20 +309,24 @@ class _VaccinationScreenState extends State<VaccinationScreen> {
                 child: TextField(controller: nameCtrl, style: TextStyle(color: AppColors.textPrimary), decoration: htmlInputDec('e.g. Newcastle Disease')),
               ),
               const SizedBox(height: 12),
-              HtmlFormField(
-                label: 'Batch / Flock',
-                child: DropdownButtonFormField<String>(
-                  initialValue: selectedBatch,
-                  dropdownColor: AppColors.surfaceLight,
-                  style: TextStyle(color: AppColors.textPrimary),
-                  decoration: htmlInputDec(),
-                  items: batchOptions.entries.map((e) => DropdownMenuItem(
-                    value: e.key,
-                    child: Text(e.value, style: TextStyle(color: AppColors.textPrimary)),
-                  )).toList(),
-                  onChanged: (v) => ss(() => selectedBatch = v ?? selectedBatch),
+              if (presetBatchId != null)
+                LockedBatchField(
+                    batchName: batchOptions[presetBatchId] ?? presetBatchId)
+              else
+                HtmlFormField(
+                  label: 'Batch / Flock',
+                  child: DropdownButtonFormField<String>(
+                    initialValue: selectedBatch,
+                    dropdownColor: AppColors.surfaceLight,
+                    style: TextStyle(color: AppColors.textPrimary),
+                    decoration: htmlInputDec(),
+                    items: batchOptions.entries.map((e) => DropdownMenuItem(
+                      value: e.key,
+                      child: Text(e.value, style: TextStyle(color: AppColors.textPrimary)),
+                    )).toList(),
+                    onChanged: (v) => ss(() => selectedBatch = v ?? selectedBatch),
+                  ),
                 ),
-              ),
               const SizedBox(height: 12),
               HtmlFormField(
                 label: 'Due Date',

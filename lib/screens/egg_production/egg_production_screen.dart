@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../utils/caps.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -11,6 +12,7 @@ import '../../providers/egg_sales_provider.dart';
 import '../../providers/batch_provider.dart';
 import '../../providers/financial_provider.dart';
 import '../../providers/quick_action_provider.dart';
+import '../../providers/weather_provider.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/currency_formatter.dart';
 import '../../utils/html_widgets.dart';
@@ -26,7 +28,7 @@ class EggProductionScreen extends StatelessWidget {
         if (quickAction.action == 'recordEggs') {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             quickAction.clear();
-            _showAddDialog(context);
+            showAddDialog(context);
           });
         }
 
@@ -41,13 +43,16 @@ class EggProductionScreen extends StatelessWidget {
         // Hen-Day % against birds currently in layer stage (all birds if none).
         final layerBirds = () {
           final layers = batchProvider.batches
-              .where((b) => b.type == BatchType.layers)
+              .where((b) => b.currentStage == BatchStage.layer)
               .fold(0, (s, b) => s + b.currentCount);
           return layers > 0 ? layers : batchProvider.totalBirds;
         }();
         double hdPct(int eggs) => layerBirds > 0 ? eggs / layerBirds * 100 : 0;
-        final latestHd = logs.isNotEmpty && layerBirds > 0
-            ? '${hdPct(logs.last.eggCount).toStringAsFixed(1)}%'
+        final latestHdRaw =
+            logs.isNotEmpty && layerBirds > 0 ? hdPct(logs.last.eggCount) : null;
+        final latestHdOver = latestHdRaw != null && latestHdRaw > 100.5;
+        final latestHd = latestHdRaw != null
+            ? '${latestHdRaw.toStringAsFixed(1)}%${latestHdOver ? ' (check)' : ''}'
             : '—%';
         final avgPerDay = eggProvider.averagePerDay;
 
@@ -60,40 +65,140 @@ class EggProductionScreen extends StatelessWidget {
                 icon: Icons.egg_outlined,
                 title: 'Egg Production Tracker',
                 subtitle: 'Production is tracked in crates (30 eggs = 1 crate)',
-                action: PrimaryBtn(label: '+ Log Today\'s Eggs', onPressed: () => _showAddDialog(context)),
+                action: Caps.of(context).canLogEggs
+                    ? PrimaryBtn(label: '+ Log Today\'s Eggs', onPressed: () => showAddDialog(context))
+                    : null,
               ),
 
               KpiGrid(children: [
                 KpiCard(label: 'In Store', value: Units.crateShort(store), sub: Units.crateLabel(store), accentColor: AppColors.amber),
-                KpiCard(label: 'Owed to You', value: '${CurrencyFormatter.currencySymbol}${owed.toStringAsFixed(0)}', accentColor: owed > 0 ? AppColors.red : AppColors.green),
+                // Money owed is hidden from anyone who can't see the books.
+                if (Caps.of(context).canSeeMoney)
+                  KpiCard(label: 'Owed to You', value: '${CurrencyFormatter.currencySymbol}${owed.toStringAsFixed(0)}', accentColor: owed > 0 ? AppColors.red : AppColors.green),
                 KpiCard(label: 'Total Crates', value: Units.crateShort(total), sub: Units.crateLabel(total), accentColor: AppColors.green),
                 KpiCard(label: 'Damaged (eggs)', value: '$damaged', accentColor: AppColors.red),
-                KpiCard(label: 'HD% (latest)', value: latestHd, accentColor: AppColors.cyan),
+                KpiCard(label: 'HD% (latest)', value: latestHd, accentColor: latestHdOver ? AppColors.red : AppColors.cyan),
                 KpiCard(label: 'Days Logged', value: '${logs.length}', accentColor: AppColors.purple),
               ]),
               const SizedBox(height: 18),
 
-              // Sales & debtors — selling draws down the store; unpaid
-              // balances are tracked per buyer until settled.
-              HtmlCard(
-                header: HtmlCardHeader(
-                  icon: Icons.point_of_sale_outlined,
-                  title: 'Egg Sales & Debtors',
-                  trailing: PrimaryBtn(
-                    label: '+ Sell Eggs',
-                    small: true,
-                    onPressed: () => _showSellDialog(context, store),
+              // Weather-aware forecast. Opt-in: nothing is fetched (and no
+              // location asked for) until the farmer taps Enable.
+              Consumer<WeatherProvider>(builder: (context, wx, _) {
+                Widget body;
+                if (wx.loading) {
+                  body = Row(children: const [
+                    SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                    SizedBox(width: 12),
+                    Text('Getting your local weather…'),
+                  ]);
+                } else if (wx.data == null) {
+                  body = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(
+                      wx.error ??
+                          'See how today\'s weather may affect laying. Uses your location to fetch the local forecast.',
+                      style: TextStyle(color: AppColors.textSecondary, fontSize: 12.5),
+                    ),
+                    const SizedBox(height: 10),
+                    PrimaryBtn(
+                      label: wx.error != null ? 'Try again' : 'Enable local weather',
+                      small: true,
+                      onPressed: () => wx.load(),
+                    ),
+                  ]);
+                } else {
+                  final d = wx.data!;
+                  final risk = d.layingRisk();
+                  final rc = (risk == null || risk.level == 'good')
+                      ? AppColors.green
+                      : (risk.level == 'high' ? AppColors.red : AppColors.amber);
+                  body = Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      Text('${d.tempC.toStringAsFixed(0)}°C',
+                          style: GoogleFonts.poppins(
+                              color: AppColors.textPrimary,
+                              fontSize: 28,
+                              fontWeight: FontWeight.w700)),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Text(
+                          'Today ${d.todayMinC.toStringAsFixed(0)}° to ${d.todayMaxC.toStringAsFixed(0)}°'
+                          '${d.tomorrowMaxC != null ? ' · tomorrow up to ${d.tomorrowMaxC!.toStringAsFixed(0)}°' : ''}'
+                          '${d.humidity != null ? ' · ${d.humidity!.toStringAsFixed(0)}% humidity' : ''}',
+                          style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                        ),
+                      ),
+                    ]),
+                    if (risk != null) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: rc.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: rc.withValues(alpha: 0.4)),
+                        ),
+                        child: Text(risk.message,
+                            style: TextStyle(
+                                color: AppColors.textPrimary,
+                                fontSize: 12.5,
+                                height: 1.4)),
+                      ),
+                    ],
+                  ]);
+                }
+                return HtmlCard(
+                  header: HtmlCardHeader(
+                    icon: Icons.wb_sunny_outlined,
+                    title: 'Weather & laying',
+                    trailing: wx.hasData
+                        ? GhostBtn(label: 'Refresh', onPressed: () => wx.load())
+                        : null,
                   ),
-                ),
-                bodyPadding: EdgeInsets.zero,
-                body: salesProvider.sales.isEmpty
-                    ? const HtmlEmptyState(
-                        icon: Icons.point_of_sale_outlined,
-                        message:
-                            'No sales yet. Collections fill your store; record a sale when eggs leave the farm.',
-                      )
-                    : _salesTable(context, salesProvider),
-              ),
+                  body: body,
+                );
+              }),
+              const SizedBox(height: 18),
+
+              // Selling draws down the store. Everyone who logs eggs can
+              // record a sale, but only owner/manager see the debtors
+              // ledger and outstanding balances — a worker just records
+              // the sale and moves on.
+              if (Caps.of(context).canSell || Caps.of(context).canSeeMoney)
+                Builder(builder: (context) {
+                  final caps = Caps.of(context);
+                  return HtmlCard(
+                    header: HtmlCardHeader(
+                      icon: Icons.point_of_sale_outlined,
+                      title: caps.canSeeMoney ? 'Egg Sales & Debtors' : 'Sell Eggs',
+                      trailing: caps.canSell
+                          ? PrimaryBtn(
+                              label: '+ Sell Eggs',
+                              small: true,
+                              onPressed: () => _showSellDialog(context, store),
+                            )
+                          : null,
+                    ),
+                    bodyPadding: EdgeInsets.zero,
+                    body: caps.canSeeMoney
+                        ? (salesProvider.sales.isEmpty
+                            ? const HtmlEmptyState(
+                                icon: Icons.point_of_sale_outlined,
+                                message:
+                                    'No sales yet. Collections fill your store; record a sale when eggs leave the farm.',
+                              )
+                            : _salesTable(context, salesProvider))
+                        : Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Text(
+                              'Record a sale when eggs leave the farm. '
+                              'The owner keeps the sales record and tracks who owes.',
+                              style: TextStyle(
+                                  color: AppColors.textSecondary, fontSize: 12.5),
+                            ),
+                          ),
+                  );
+                }),
 
               HtmlCard(
                 header: HtmlCardHeader(
@@ -125,7 +230,7 @@ class EggProductionScreen extends StatelessWidget {
                     ? HtmlEmptyState(
                         icon: Icons.egg_outlined,
                         message: 'No egg records yet.',
-                        action: PrimaryBtn(label: '+ Log Eggs', small: true, onPressed: () => _showAddDialog(context)),
+                        action: Caps.of(context).canLogEggs ? PrimaryBtn(label: '+ Log Eggs', small: true, onPressed: () => showAddDialog(context)) : null,
                       )
                     : _logsTable(context, logs, eggProvider, hdPct),
               ),
@@ -212,6 +317,7 @@ class EggProductionScreen extends StatelessWidget {
     final bp = context.read<BatchProvider>();
     return HtmlTable(
       headers: ['Date', 'Batch', 'Time', 'Crates', 'Good', 'Damaged', 'HD%', ''],
+      dates: sorted.map((e) => e.date).toList(),
       rows: sorted.map((e) => [
         Text(DateFormat('d MMM yyyy').format(e.date), style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
         Text(bp.batchLabel(e.batchId), style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11)),
@@ -219,16 +325,37 @@ class EggProductionScreen extends StatelessWidget {
         Text(Units.crateLabel(e.eggCount), style: GoogleFonts.inter(color: AppColors.green, fontWeight: FontWeight.w500, fontSize: 12)),
         Text(Units.crateLabel(e.goodCount), style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11)),
         Text('${e.damagedCount}', style: GoogleFonts.inter(color: e.damagedCount > 0 ? AppColors.red : AppColors.textSecondary, fontSize: 11)),
-        Text('${hdPct(e.eggCount).toStringAsFixed(1)}%', style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11)),
-        Row(mainAxisSize: MainAxisSize.min, children: [
-          EditBtn(onTap: () => _showEditDialog(context, e, provider)),
-          DelBtn(onTap: () => provider.removeRecord(e.id)),
-        ]),
+        _hdCell(hdPct(e.eggCount)),
+        Caps.of(context).canAmend
+            ? Row(mainAxisSize: MainAxisSize.min, children: [
+                EditBtn(onTap: () => _showEditDialog(context, e, provider)),
+                DelBtn(onTap: () => provider.removeRecord(e.id)),
+              ])
+            : const SizedBox.shrink(),
       ]).toList(),
     );
   }
 
-  void _showAddDialog(BuildContext context) {
+  /// Hen-day percentage cannot exceed 100% (a hen lays at most one egg a
+  /// day). A value above that means the entry is off, usually a mistyped
+  /// crate count, so it is flagged in the danger colour rather than shown
+  /// as if it were a real, very high laying rate.
+  Widget _hdCell(double hd) {
+    final over = hd > 100.5;
+    return Text(
+      over ? '${hd.toStringAsFixed(1)}% (check)' : '${hd.toStringAsFixed(1)}%',
+      style: GoogleFonts.inter(
+        color: over ? AppColors.red : AppColors.textPrimary,
+        fontSize: 11,
+        fontWeight: over ? FontWeight.w700 : FontWeight.w400,
+      ),
+    );
+  }
+
+  /// Opens the egg log. When [presetBatchId] is given (the batch hub
+  /// passes it), the flock is fixed and shown locked instead of as a
+  /// dropdown, so a collection cannot be filed against the wrong batch.
+  static void showAddDialog(BuildContext context, {String? presetBatchId}) {
     final cratesCtrl  = TextEditingController();
     final looseCtrl   = TextEditingController();
     final damagedCtrl = TextEditingController();
@@ -237,7 +364,7 @@ class EggProductionScreen extends StatelessWidget {
     final batches = context.read<BatchProvider>().batches;
     // Records reference batches by ID; 'All' means the whole flock.
     final batchOptions = {'All': 'All', for (final b in batches) b.id: b.name};
-    String selectedBatch = 'All';
+    String selectedBatch = presetBatchId ?? 'All';
     DateTime selectedDate = DateTime.now();
     // Default the period from the time of day, the way field workers
     // log collections (morning/afternoon/evening rounds).
@@ -282,20 +409,24 @@ class EggProductionScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            HtmlFormField(
-              label: 'Batch / Flock',
-              child: DropdownButtonFormField<String>(
-                initialValue: selectedBatch,
-                dropdownColor: AppColors.surfaceLight,
-                style: TextStyle(color: AppColors.textPrimary),
-                decoration: htmlInputDec(),
-                items: batchOptions.entries.map((e) => DropdownMenuItem(
-                  value: e.key,
-                  child: Text(e.value, style: TextStyle(color: AppColors.textPrimary)),
-                )).toList(),
-                onChanged: (v) => ss(() => selectedBatch = v ?? selectedBatch),
+            if (presetBatchId != null)
+              LockedBatchField(
+                  batchName: batchOptions[presetBatchId] ?? presetBatchId)
+            else
+              HtmlFormField(
+                label: 'Batch / Flock',
+                child: DropdownButtonFormField<String>(
+                  initialValue: selectedBatch,
+                  dropdownColor: AppColors.surfaceLight,
+                  style: TextStyle(color: AppColors.textPrimary),
+                  decoration: htmlInputDec(),
+                  items: batchOptions.entries.map((e) => DropdownMenuItem(
+                    value: e.key,
+                    child: Text(e.value, style: TextStyle(color: AppColors.textPrimary)),
+                  )).toList(),
+                  onChanged: (v) => ss(() => selectedBatch = v ?? selectedBatch),
+                ),
               ),
-            ),
             const SizedBox(height: 12),
             HtmlFormField(
               label: 'Collection Time',
@@ -452,6 +583,7 @@ class EggProductionScreen extends StatelessWidget {
     final sym = CurrencyFormatter.currencySymbol;
     return HtmlTable(
       headers: ['Date', 'Buyer', 'Crates', 'Total', 'Owed', ''],
+      dates: provider.sales.map((s) => s.date).toList(),
       rows: provider.sales.map((s) {
         final buyer = s.buyer.length > 12 ? '${s.buyer.substring(0, 12)}…' : s.buyer;
         return [
@@ -566,6 +698,7 @@ class EggProductionScreen extends StatelessWidget {
                     category: TransactionCategory.eggSales,
                     amount: paid,
                     description: 'Egg sale: ${Units.crateLabel(eggs)} to $buyer',
+                    sourceId: sale.id,
                   ));
                 }
                 Navigator.pop(ctx);
@@ -619,6 +752,7 @@ class EggProductionScreen extends StatelessWidget {
                 category: TransactionCategory.eggSales,
                 amount: amt,
                 description: 'Egg payment: ${sale.buyer}',
+                sourceId: sale.id,
               ));
               Navigator.pop(ctx);
               ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -641,14 +775,21 @@ class EggProductionScreen extends StatelessWidget {
         title: const Text('Delete Sale?'),
         content: Text(
           'Delete the sale of ${Units.crateLabel(sale.eggCount)} to ${sale.buyer}?\n\n'
-          'The eggs return to your store. Income already received stays in Financials.',
+          'The eggs return to your store and the income from this sale is '
+          'removed from Financials.',
           style: TextStyle(color: AppColors.textSecondary),
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.red, foregroundColor: Colors.white),
-            onPressed: () { provider.removeSale(sale.id); Navigator.pop(ctx); },
+            onPressed: () {
+              provider.removeSale(sale.id);
+              // Full undo: drop the sale's income (and any recorded
+              // payments) from the books, per the farmer's setup.
+              context.read<FinancialProvider>().removeBySource(sale.id);
+              Navigator.pop(ctx);
+            },
             child: const Text('Delete'),
           ),
         ],

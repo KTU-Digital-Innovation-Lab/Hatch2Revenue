@@ -64,23 +64,39 @@ class EggProductionProvider extends ChangeNotifier {
   }
 
   /// Linear-trend forecast of total eggs over the next [days] days,
-  /// fitted on up to the last 14 daily totals. Falls back to the
-  /// recent average when there is too little data for a trend.
+  /// fitted on the daily totals of the last 14 calendar days.
+  ///
+  /// The fit runs against elapsed days, not the position of a record in
+  /// the list. A farmer who misses a day leaves a gap in [dailyTotals],
+  /// and treating those entries as evenly spaced would distort the
+  /// slope — a real risk here, because irregular logging is normal on a
+  /// working farm. Falls back to the recent daily average when there is
+  /// too little data to fit a trend.
   int forecastNext(int days) {
     final totals = dailyTotals;
     if (totals.isEmpty) return 0;
-    final recent = totals.length > 14
-        ? totals.sublist(totals.length - 14)
-        : totals;
+
+    // Window by calendar date rather than record count, so 14 sparse
+    // entries spread over two months are not treated as a fortnight.
+    final lastDay = totals.last.key;
+    final windowStart = lastDay.subtract(const Duration(days: 13));
+    final recent =
+        totals.where((e) => !e.key.isBefore(windowStart)).toList();
     final n = recent.length;
+
+    // Days elapsed since the first day in the window: 0, 1, 4, 5...
+    final firstDay = recent.first.key;
+    final xs = recent
+        .map((e) => e.key.difference(firstDay).inDays.toDouble())
+        .toList();
+    final ys = recent.map((e) => e.value.toDouble()).toList();
+
     if (n < 3) {
-      final avg =
-          recent.fold(0, (s, e) => s + e.value) / n;
+      final avg = recent.fold(0, (s, e) => s + e.value) / n;
       return (avg * days).round();
     }
-    // Least-squares fit: y = a + b*x over x = 0..n-1
-    final xs = List.generate(n, (i) => i.toDouble());
-    final ys = recent.map((e) => e.value.toDouble()).toList();
+
+    // Least-squares fit: y = a + b*x
     final xMean = xs.reduce((a, b) => a + b) / n;
     final yMean = ys.reduce((a, b) => a + b) / n;
     double num = 0, den = 0;
@@ -90,9 +106,12 @@ class EggProductionProvider extends ChangeNotifier {
     }
     final b = den == 0 ? 0.0 : num / den;
     final a = yMean - b * xMean;
+
+    // Project forward from the last day actually logged.
+    final lastX = xs.last;
     double sum = 0;
-    for (var d = 0; d < days; d++) {
-      final projected = a + b * (n + d);
+    for (var d = 1; d <= days; d++) {
+      final projected = a + b * (lastX + d);
       sum += projected < 0 ? 0 : projected;
     }
     return sum.round();

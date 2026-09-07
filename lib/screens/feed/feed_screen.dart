@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../utils/caps.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
@@ -8,7 +9,9 @@ import '../../models/financial_transaction.dart';
 import '../../services/sync_service.dart';
 import '../../providers/feed_provider.dart';
 import '../../providers/batch_provider.dart';
+import '../../providers/egg_production_provider.dart';
 import '../../providers/financial_provider.dart';
+import '../../services/insights_engine.dart';
 import '../../utils/app_colors.dart';
 import '../../utils/currency_formatter.dart';
 import '../../utils/html_widgets.dart';
@@ -16,44 +19,39 @@ import '../../utils/units.dart';
 
 class FeedScreen extends StatefulWidget {
   const FeedScreen({super.key});
+
+  /// Opens the feed consumption log. When [presetBatchId] is given (the
+  /// batch hub passes it), the flock is fixed and shown locked so feed
+  /// cannot be booked against the wrong batch.
+  static void showLogDialog(BuildContext context,
+          FeedProvider feedProvider, {String? presetBatchId}) =>
+      _FeedScreenState._showLogDialog(context, feedProvider,
+          presetBatchId: presetBatchId);
   @override
   State<FeedScreen> createState() => _FeedScreenState();
 }
 
 class _FeedScreenState extends State<FeedScreen> {
-  final _fcrFeedCtrl   = TextEditingController();
-  final _fcrOutputCtrl = TextEditingController();
-  String _fcrResult = '—';
-  String _fcrRating = '';
-  Color  _fcrColor  = AppColors.amber;
 
-  void _calcFCR() {
-    final f = double.tryParse(_fcrFeedCtrl.text) ?? 0;
-    final o = double.tryParse(_fcrOutputCtrl.text) ?? 0;
-    if (f <= 0 || o <= 0) {
-      setState(() { _fcrResult = '—'; _fcrRating = ''; });
-      return;
+  /// Feed conversion worked out from what the farm has already logged,
+  /// so the farmer never types a number. Expressed as kilograms of feed
+  /// per dozen eggs (the standard layer measure); lower is better.
+  (String value, String rating, Color color) _autoFcr(double totalKg, int eggs) {
+    if (totalKg <= 0 || eggs <= 0) {
+      return ('—', 'Log feed and eggs to see this', AppColors.textSecondary);
     }
-    final fcr = f / o;
-    setState(() {
-      _fcrResult = fcr.toStringAsFixed(2);
-      if (fcr < 2.0) {
-        _fcrColor  = AppColors.green;
-        _fcrRating = 'Excellent efficiency';
-      } else if (fcr < 2.5) {
-        _fcrColor  = AppColors.amber;
-        _fcrRating = 'Average — monitor feed';
-      } else {
-        _fcrColor  = AppColors.red;
-        _fcrRating = 'Poor — investigate feeding';
-      }
-    });
+    final fcr = totalKg / (eggs / 12.0);
+    if (fcr < 2.0) return ('${fcr.toStringAsFixed(1)} kg', 'Good: little feed per dozen eggs', AppColors.green);
+    if (fcr < 2.5) return ('${fcr.toStringAsFixed(1)} kg', 'Fair: keep an eye on feed use', AppColors.amber);
+    return ('${fcr.toStringAsFixed(1)} kg', 'High: the birds are eating a lot per egg', AppColors.red);
   }
 
   @override
   Widget build(BuildContext context) {
     return Consumer2<FeedProvider, BatchProvider>(
       builder: (context, feedProvider, batchProvider, _) {
+        final caps = Caps.of(context);
+        final totalEggs = context.watch<EggProductionProvider>().totalEggs;
         final records  = feedProvider.records;
         final totalKg  = feedProvider.totalFeedConsumed;
         final stockKg  = feedProvider.totalStockKg;
@@ -75,11 +73,16 @@ class _FeedScreenState extends State<FeedScreen> {
                 icon: Icons.grass,
                 title: 'Feed Monitoring System',
                 subtitle: 'Feed is tracked in bags (1 bag = 50 kg) — inventory, daily logs, and FCR',
-                action: Row(mainAxisSize: MainAxisSize.min, children: [
-                  GhostBtn(label: 'Add Stock', onPressed: () => _showStockDialog(context, feedProvider)),
-                  const SizedBox(width: 8),
-                  PrimaryBtn(label: '+ Log Consumption', onPressed: () => _showLogDialog(context, feedProvider)),
-                ]),
+                action: (caps.canAmend || caps.canLogFeed)
+                    ? Row(mainAxisSize: MainAxisSize.min, children: [
+                        if (caps.canAmend) ...[
+                          GhostBtn(label: 'Add Stock', onPressed: () => _showStockDialog(context, feedProvider)),
+                          const SizedBox(width: 8),
+                        ],
+                        if (caps.canLogFeed)
+                          PrimaryBtn(label: '+ Log Consumption', onPressed: () => _showLogDialog(context, feedProvider)),
+                      ])
+                    : null,
               ),
 
               ..._buildAlerts(feedProvider),
@@ -90,6 +93,44 @@ class _FeedScreenState extends State<FeedScreen> {
                 KpiCard(label: 'FCR (7-day)', value: fcr7, accentColor: AppColors.cyan),
                 KpiCard(label: 'Total Logs', value: '${records.length}', accentColor: AppColors.purple),
               ]),
+              const SizedBox(height: 18),
+
+              // Predicted feed requirement, from flock size and age.
+              Builder(builder: (context) {
+                final fc = InsightsEngine.feedForecast(batchProvider, feedProvider);
+                Widget stat(String v, String label, Color c) => Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(v, style: TextStyle(color: c, fontSize: 22, fontWeight: FontWeight.w700)),
+                          Text(label, style: TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                        ],
+                      ),
+                    );
+                return HtmlCard(
+                  header: HtmlCardHeader(
+                    icon: Icons.insights,
+                    title: 'Feed Forecast',
+                    trailing: TagChip(label: 'Predicted', color: AppColors.cyan),
+                  ),
+                  body: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'From your flock size and age — chicks, growers and layers eat '
+                        'different amounts — you need about ${fc.dailyKg.toStringAsFixed(0)} kg of feed a day:',
+                        style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(children: [
+                        stat(fc.next7Bags.toStringAsFixed(1), 'bags · next 7 days', AppColors.green),
+                        stat(fc.next30Bags.toStringAsFixed(0), 'bags · next 30 days', AppColors.cyan),
+                        stat(fc.daysLeft > 0 ? '~${fc.daysLeft.toStringAsFixed(0)}' : '—', 'days stock lasts', AppColors.amber),
+                      ]),
+                    ],
+                  ),
+                );
+              }),
               const SizedBox(height: 18),
 
               // Stock inventory card
@@ -106,7 +147,7 @@ class _FeedScreenState extends State<FeedScreen> {
                     ? HtmlEmptyState(
                         icon: Icons.inventory_2_outlined,
                         message: 'No stock recorded. Add feed purchases to track inventory and days-left estimates.',
-                        action: PrimaryBtn(label: '+ Add Stock', small: true, onPressed: () => _showStockDialog(context, feedProvider)),
+                        action: caps.canAmend ? PrimaryBtn(label: '+ Add Stock', small: true, onPressed: () => _showStockDialog(context, feedProvider)) : null,
                       )
                     : _stockTable(context, feedProvider),
               ),
@@ -119,43 +160,47 @@ class _FeedScreenState extends State<FeedScreen> {
                       ? HtmlEmptyState(
                           icon: Icons.grass,
                           message: 'No logs yet. Start logging daily feed.',
-                          action: PrimaryBtn(label: '+ Log Consumption', small: true, onPressed: () => _showLogDialog(context, feedProvider)),
+                          action: caps.canLogFeed ? PrimaryBtn(label: '+ Log Consumption', small: true, onPressed: () => _showLogDialog(context, feedProvider)) : null,
                         )
                       : _logsTable(context, records, feedProvider),
                 ),
-                right: HtmlCard(
-                  header: HtmlCardHeader(icon: Icons.balance, title: 'FCR Calculator', trailing: TagChip(label: 'Auto-computed', color: AppColors.green)),
-                  body: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'FCR = Total Feed Consumed ÷ Total Eggs (or Weight). Lower FCR = better efficiency.',
-                        style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11),
-                      ),
-                      const SizedBox(height: 14),
-                      _fcrField(_fcrFeedCtrl, 'Total Feed Consumed (kg)', 'e.g. 500'),
-                      const SizedBox(height: 12),
-                      _fcrField(_fcrOutputCtrl, 'Total Output (eggs or kg gain)', 'e.g. 350'),
-                      const SizedBox(height: 14),
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: AppColors.surfaceLight,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: AppColors.border),
+                right: Builder(builder: (context) {
+                  final (fcrValue, fcrRating, fcrColor) = _autoFcr(totalKg, totalEggs);
+                  return HtmlCard(
+                    header: HtmlCardHeader(icon: Icons.balance, title: 'Feed Efficiency', trailing: TagChip(label: 'Worked out for you', color: AppColors.green)),
+                    body: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'How much feed each dozen eggs is costing you. It is worked out from the feed and eggs you have logged, so there is nothing to type. The lower the number, the better.',
+                          style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11),
                         ),
-                        child: Column(children: [
-                          Text('FCR RESULT', style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 10, letterSpacing: 2)),
-                          const SizedBox(height: 6),
-                          Text(_fcrResult, style: GoogleFonts.poppins(color: _fcrColor, fontSize: 34, fontWeight: FontWeight.w800)),
-                          if (_fcrRating.isNotEmpty)
-                            Text(_fcrRating, style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 10)),
-                        ]),
-                      ),
-                    ],
-                  ),
-                ),
+                        const SizedBox(height: 14),
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: AppColors.surfaceLight,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: Column(children: [
+                            Text('FEED PER DOZEN EGGS', style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 10, letterSpacing: 2)),
+                            const SizedBox(height: 6),
+                            Text(fcrValue, style: GoogleFonts.poppins(color: fcrColor, fontSize: 34, fontWeight: FontWeight.w800)),
+                            const SizedBox(height: 2),
+                            Text(fcrRating, textAlign: TextAlign.center, style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
+                          ]),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'So far: ${Units.bagShort(totalKg)} bags of feed used, and ${Units.crateLabel(totalEggs)} of eggs collected.',
+                          style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
               ),
 
               const SizedBox(height: 60),
@@ -211,19 +256,6 @@ class _FeedScreenState extends State<FeedScreen> {
     ];
   }
 
-  Widget _fcrField(TextEditingController ctrl, String label, String hint) {
-    return HtmlFormField(
-      label: label,
-      child: TextField(
-        controller: ctrl,
-        keyboardType: TextInputType.number,
-        onChanged: (_) => _calcFCR(),
-        style: TextStyle(color: AppColors.textPrimary),
-        decoration: htmlInputDec(hint),
-      ),
-    );
-  }
-
   Widget _twoCol({required Widget left, required Widget right}) {
     return LayoutBuilder(builder: (ctx, c) {
       if (c.maxWidth < 500) return Column(children: [left, right]);
@@ -238,6 +270,7 @@ class _FeedScreenState extends State<FeedScreen> {
     final bp = context.read<BatchProvider>();
     return HtmlTable(
       headers: ['Date', 'Amount (bags)', 'Type', 'Batch', ''],
+      dates: sorted.map((r) => r.date).toList(),
       rows: sorted.map((r) {
         final label = bp.batchLabel(r.batchId);
         return [
@@ -245,10 +278,16 @@ class _FeedScreenState extends State<FeedScreen> {
         Text('${Units.bagShort(r.totalKg)} bags', style: GoogleFonts.inter(color: AppColors.cyan, fontWeight: FontWeight.w500, fontSize: 12)),
         Text(r.feedTypeName, style: GoogleFonts.inter(color: AppColors.textPrimary, fontSize: 11)),
         Text(label.length > 12 ? '${label.substring(0, 12)}…' : label, style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
-        Row(mainAxisSize: MainAxisSize.min, children: [
-          EditBtn(onTap: () => _showEditDialog(context, r, provider)),
-          DelBtn(onTap: () => provider.removeRecord(r.id)),
-        ]),
+        Caps.of(context).canAmend
+            ? Row(mainAxisSize: MainAxisSize.min, children: [
+                EditBtn(onTap: () => _showEditDialog(context, r, provider)),
+                DelBtn(onTap: () {
+                  provider.removeRecord(r.id);
+                  // Remove the auto-posted feed expense with the log.
+                  context.read<FinancialProvider>().removeBySource(r.id);
+                }),
+              ])
+            : const SizedBox.shrink(),
       ];
       }).toList(),
     );
@@ -275,10 +314,12 @@ class _FeedScreenState extends State<FeedScreen> {
           Text(Units.bagShort(i.quantityKg), style: GoogleFonts.inter(color: AppColors.cyan, fontWeight: FontWeight.w500, fontSize: 12)),
           Text(DateFormat('d MMM yyyy').format(i.expiryDate), style: GoogleFonts.inter(color: AppColors.textSecondary, fontSize: 11)),
           TagChip(label: status, color: statusColor),
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            EditBtn(onTap: () => _showStockDialog(context, provider, existing: i)),
-            DelBtn(onTap: () => _confirmDeleteStock(context, i, provider)),
-          ]),
+          Caps.of(context).canAmend
+              ? Row(mainAxisSize: MainAxisSize.min, children: [
+                  EditBtn(onTap: () => _showStockDialog(context, provider, existing: i)),
+                  DelBtn(onTap: () => _confirmDeleteStock(context, i, provider)),
+                ])
+              : const SizedBox.shrink(),
         ];
       }).toList(),
     );
@@ -361,6 +402,7 @@ class _FeedScreenState extends State<FeedScreen> {
                         category: TransactionCategory.feed,
                         amount: item.totalValue,
                         description: 'Feed stock: ${Units.bagShort(qty)} bags $type',
+                        sourceId: item.id,
                       ),
                     );
                   }
@@ -399,7 +441,12 @@ class _FeedScreenState extends State<FeedScreen> {
           TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Cancel', style: TextStyle(color: AppColors.textSecondary))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.red, foregroundColor: Colors.white),
-            onPressed: () { provider.removeInventory(item.id); Navigator.pop(ctx); },
+            onPressed: () {
+              provider.removeInventory(item.id);
+              // Remove the auto-posted purchase expense with it.
+              context.read<FinancialProvider>().removeBySource(item.id);
+              Navigator.pop(ctx);
+            },
             child: const Text('Delete'),
           ),
         ],
@@ -407,14 +454,15 @@ class _FeedScreenState extends State<FeedScreen> {
     );
   }
 
-  void _showLogDialog(BuildContext context, FeedProvider feedProvider) {
+  static void _showLogDialog(BuildContext context, FeedProvider feedProvider,
+      {String? presetBatchId}) {
     final amountCtrl = TextEditingController();
     final typeCtrl   = TextEditingController();
     final costCtrl   = TextEditingController();
     final batches = context.read<BatchProvider>().batches;
     // Records reference batches by ID; 'All' means the whole flock.
     final batchOptions = {for (final b in batches) b.id: b.name, 'All': 'All'};
-    String selectedBatch = batchOptions.keys.first;
+    String selectedBatch = presetBatchId ?? batchOptions.keys.first;
     DateTime selectedDate = DateTime.now();
 
     // Owner-priced catalog: when the farm has official prices, the
@@ -424,6 +472,21 @@ class _FeedScreenState extends State<FeedScreen> {
     final useCatalog = catalog.isNotEmpty;
     FeedCatalogItem? selectedFeed = useCatalog ? catalog.first : null;
     double bags = 0;
+
+    // Which stock item this consumption depletes. Defaults to the stock
+    // matching the chosen feed's type (Starter feed -> Starter stock), so
+    // logging reduces the right bag without an extra tap; the farmer can
+    // still change it. Falls back to the first item so it always defaults
+    // to something visible.
+    final inventory = feedProvider.inventory;
+    String? stockDefaultFor(FeedCatalogItem? f) => inventory.isEmpty
+        ? null
+        : (feedProvider.stockIdFor(
+              f != null ? _parseFeedType(f.feedName) : FeedType.custom,
+              feedName: f?.feedName,
+            ) ??
+            inventory.first.id);
+    String? selectedStockId = stockDefaultFor(selectedFeed);
 
     showDialog(
       context: context,
@@ -449,22 +512,28 @@ class _FeedScreenState extends State<FeedScreen> {
               const SizedBox(height: 12),
               if (useCatalog) ...[
                 HtmlFormField(
-                  label: 'Feed Type (official prices)',
+                  label: 'Feed Type',
                   child: DropdownButtonFormField<FeedCatalogItem>(
                     initialValue: selectedFeed,
                     dropdownColor: AppColors.surfaceLight,
                     style: TextStyle(color: AppColors.textPrimary),
                     decoration: htmlInputDec(),
+                    // Feed prices are never shown in the picker; the cost
+                    // is computed from the owner's price behind the scenes.
                     items: catalog
                         .map((c) => DropdownMenuItem(
                               value: c,
                               child: Text(
-                                '${c.feedName} — ${CurrencyFormatter.currencySymbol}${c.pricePerBag.toStringAsFixed(0)}/bag',
+                                c.feedName,
                                 style: TextStyle(color: AppColors.textPrimary, fontSize: 13),
                               ),
                             ))
                         .toList(),
-                    onChanged: (v) => ss(() => selectedFeed = v),
+                    onChanged: (v) => ss(() {
+                      selectedFeed = v;
+                      // Re-match the stock to the newly chosen feed's type.
+                      selectedStockId = stockDefaultFor(v);
+                    }),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -479,7 +548,10 @@ class _FeedScreenState extends State<FeedScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                // Locked cost — computed, never typed.
+                // Locked cost — computed, never typed. Hidden from anyone
+                // who is not allowed to see money (workers); the cost is
+                // still recorded for the owner. For a worker we show the
+                // quantity only, so they can confirm what they entered.
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(12),
@@ -495,7 +567,10 @@ class _FeedScreenState extends State<FeedScreen> {
                         children: [
                           Icon(Icons.lock_outline, size: 14, color: AppColors.amber),
                           const SizedBox(width: 6),
-                          Text('COST (SET BY OWNER)',
+                          Text(
+                              Caps.of(context, listen: false).canSeeMoney
+                                  ? 'COST (SET BY OWNER)'
+                                  : 'QUANTITY',
                               style: TextStyle(color: AppColors.textSecondary, fontSize: 10, letterSpacing: 1)),
                         ],
                       ),
@@ -503,8 +578,10 @@ class _FeedScreenState extends State<FeedScreen> {
                       Text(
                         selectedFeed == null || bags <= 0
                             ? '—'
-                            : '${CurrencyFormatter.currencySymbol}${(bags * selectedFeed!.pricePerBag).toStringAsFixed(2)}'
-                              '  ·  ${(bags * selectedFeed!.kgPerBag).toStringAsFixed(0)} kg',
+                            : (Caps.of(context, listen: false).canSeeMoney
+                                ? '${CurrencyFormatter.currencySymbol}${(bags * selectedFeed!.pricePerBag).toStringAsFixed(2)}'
+                                  '  ·  ${(bags * selectedFeed!.kgPerBag).toStringAsFixed(0)} kg'
+                                : '${(bags * selectedFeed!.kgPerBag).toStringAsFixed(0)} kg'),
                         style: TextStyle(color: AppColors.amber, fontSize: 18, fontWeight: FontWeight.w700),
                       ),
                     ],
@@ -527,20 +604,51 @@ class _FeedScreenState extends State<FeedScreen> {
                 ),
               ],
               const SizedBox(height: 12),
-              HtmlFormField(
-                label: 'Batch / Flock',
-                child: DropdownButtonFormField<String>(
-                  initialValue: selectedBatch,
-                  dropdownColor: AppColors.surfaceLight,
-                  style: TextStyle(color: AppColors.textPrimary),
-                  decoration: htmlInputDec(),
-                  items: batchOptions.entries.map((e) => DropdownMenuItem(
-                    value: e.key,
-                    child: Text(e.value, style: TextStyle(color: AppColors.textPrimary)),
-                  )).toList(),
-                  onChanged: (v) => ss(() => selectedBatch = v ?? selectedBatch),
+              if (inventory.isNotEmpty) ...[
+                HtmlFormField(
+                  label: 'Deduct from stock',
+                  child: DropdownButtonFormField<String?>(
+                    initialValue: selectedStockId,
+                    dropdownColor: AppColors.surfaceLight,
+                    style: TextStyle(color: AppColors.textPrimary),
+                    decoration: htmlInputDec(),
+                    items: [
+                      ...inventory.map((it) => DropdownMenuItem<String?>(
+                            value: it.id,
+                            child: Text(
+                              '${it.feedTypeName} · ${Units.bagShort(it.quantityKg)} bags left',
+                              style: TextStyle(color: AppColors.textPrimary, fontSize: 13),
+                            ),
+                          )),
+                      DropdownMenuItem<String?>(
+                        value: null,
+                        child: Text("Don't deduct from stock",
+                            style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+                      ),
+                    ],
+                    onChanged: (v) => ss(() => selectedStockId = v),
+                  ),
                 ),
-              ),
+                const SizedBox(height: 12),
+              ],
+              if (presetBatchId != null)
+                LockedBatchField(
+                    batchName: batchOptions[presetBatchId] ?? presetBatchId)
+              else
+                HtmlFormField(
+                  label: 'Batch / Flock',
+                  child: DropdownButtonFormField<String>(
+                    initialValue: selectedBatch,
+                    dropdownColor: AppColors.surfaceLight,
+                    style: TextStyle(color: AppColors.textPrimary),
+                    decoration: htmlInputDec(),
+                    items: batchOptions.entries.map((e) => DropdownMenuItem(
+                      value: e.key,
+                      child: Text(e.value, style: TextStyle(color: AppColors.textPrimary)),
+                    )).toList(),
+                    onChanged: (v) => ss(() => selectedBatch = v ?? selectedBatch),
+                  ),
+                ),
             ]),
           ),
           actions: [
@@ -571,10 +679,12 @@ class _FeedScreenState extends State<FeedScreen> {
                   kgPerBag: kg,
                   unitPricePerBag: cost,
                   date: selectedDate,
+                  stockItemId: selectedStockId,
                 );
                 feedProvider.addRecord(record);
 
-                // Auto-post the cost to Financials
+                // Auto-post the cost to Financials, linked to this log so
+                // deleting the log removes the expense automatically.
                 if (cost > 0) {
                   context.read<FinancialProvider>().addTransaction(
                     FinancialTransaction(
@@ -584,6 +694,7 @@ class _FeedScreenState extends State<FeedScreen> {
                       amount: cost,
                       batchId: selectedBatch,
                       description: 'Feed: ${Units.bagShort(kg)} bags ${record.feedTypeName}',
+                      sourceId: record.id,
                     ),
                   );
                 }
@@ -605,7 +716,7 @@ class _FeedScreenState extends State<FeedScreen> {
     );
   }
 
-  FeedType _parseFeedType(String text) {
+  static FeedType _parseFeedType(String text) {
     final t = text.toLowerCase();
     if (t.contains('starter'))  return FeedType.starter;
     if (t.contains('grower'))   return FeedType.grower;
@@ -646,7 +757,16 @@ class _FeedScreenState extends State<FeedScreen> {
               onPressed: () {
                 final bags = double.tryParse(amountCtrl.text) ?? 0;
                 if (bags <= 0) return;
-                provider.updateRecord(feed.copyWith(feedType: selectedType, bagsUsed: 1, kgPerBag: Units.bagsToKg(bags)));
+                // If the type changed, re-match which stock this draws from
+                // so the deduction moves with it; otherwise keep the link.
+                final stockId = selectedType != feed.feedType
+                    ? (provider.stockIdFor(selectedType) ?? feed.stockItemId)
+                    : feed.stockItemId;
+                provider.updateRecord(feed.copyWith(
+                    feedType: selectedType,
+                    bagsUsed: 1,
+                    kgPerBag: Units.bagsToKg(bags),
+                    stockItemId: stockId));
                 Navigator.pop(ctx);
                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Record updated'), backgroundColor: AppColors.cyan, behavior: SnackBarBehavior.floating));
               },

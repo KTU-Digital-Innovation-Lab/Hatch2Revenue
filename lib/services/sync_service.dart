@@ -441,6 +441,21 @@ class SyncService extends ChangeNotifier {
         .eq('user_id', userId);
   }
 
+  /// Set a member's role (manager | worker | vet), optionally approving
+  /// them at the same time. Enforced owner-only server-side by
+  /// h2r_set_member_role.
+  Future<void> setMemberRole(String userId, String role,
+      {bool approve = false}) async {
+    _requireSupabase();
+    final m = _membership;
+    if (m == null || !m.isOwner) throw Exception('Only the owner can do this.');
+    await Supabase.instance.client.rpc('h2r_set_member_role', params: {
+      'member': userId,
+      'new_role': role,
+      'approve': approve,
+    });
+  }
+
   Future<void> refreshCatalog() async {
     final m = _membership;
     if (m == null || !m.isApproved) return;
@@ -528,19 +543,45 @@ class SyncService extends ChangeNotifier {
     for (final entry in byTable.entries) {
       final table = entry.key;
       final rows = <Map<String, dynamic>>[];
+      final localOnly = DatabaseService.localOnlyColumns[table] ?? const {};
       for (final id in entry.value) {
         final row = await _db.getRowById(table, id);
-        // A null row was hard-deleted locally — nothing to send.
-        if (row != null) rows.add({...row, 'farm_id': farmId});
+        // A null row was hard-deleted locally — nothing to send. Drop any
+        // local-only columns so the cloud mirror never sees a column it
+        // does not have (which would otherwise jam this table's queue).
+        if (row != null) {
+          final clean = {...row}..removeWhere((k, _) => localOnly.contains(k));
+          rows.add({...clean, 'farm_id': farmId});
+        }
       }
-      if (rows.isNotEmpty) {
-        // Throws on failure, which aborts before the queue is cleared —
-        // the rows simply retry on the next sync.
-        await client.from('h2r_$table').upsert(rows);
-        pushed += rows.length;
-      }
-      for (final id in entry.value) {
-        await _db.clearOutboxEntry(table, id);
+      try {
+        if (rows.isNotEmpty) {
+          await client.from('h2r_$table').upsert(rows);
+          pushed += rows.length;
+        }
+        for (final id in entry.value) {
+          await _db.clearOutboxEntry(table, id);
+        }
+      } on PostgrestException catch (e) {
+        // A row-level-security refusal (42501) means the server will
+        // NEVER accept this change — the caller's role isn't allowed to
+        // make it. Clearing the entries stops one forbidden write from
+        // jamming the queue forever (and blocking the member's legit
+        // rows). With correct role-gating in the UI this should not
+        // happen; this is the backstop. Other errors (network, etc.)
+        // are left queued to retry, and we move on to the next table so
+        // one table can't block the rest.
+        if (e.code == '42501') {
+          for (final id in entry.value) {
+            await _db.clearOutboxEntry(table, id);
+          }
+          debugPrint('Sync: server rejected $table change (not permitted for '
+              'this role); dropped from queue.');
+        } else {
+          debugPrint('Sync: push to $table failed ($e); will retry.');
+        }
+      } catch (e) {
+        debugPrint('Sync: push to $table failed ($e); will retry.');
       }
     }
     return pushed;

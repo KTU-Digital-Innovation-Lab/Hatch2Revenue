@@ -78,6 +78,7 @@ class Vaccination {
   }
 
   Map<String, dynamic> toMap() {
+    
     return {
       'id': id,
       'batchId': batchId,
