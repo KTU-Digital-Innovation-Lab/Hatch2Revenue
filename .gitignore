@@ -56,3 +56,4 @@ command-center/config.js
 
 # Command centre web console (kept local, not in the repo)
 command-center/
+supabase/h2r_command_center.sql
