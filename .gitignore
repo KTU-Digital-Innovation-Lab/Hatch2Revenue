@@ -53,3 +53,6 @@ android/.kotlin/
 
 # Command centre runtime credentials (copy config.example.js)
 command-center/config.js
+
+# Command centre web console (kept local, not in the repo)
+command-center/
