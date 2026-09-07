@@ -258,11 +258,23 @@
 
 <div id="drill"><div class="drill-card" id="drillCard"></div></div>
 
+<script src="config.js"></script>
 <script type="module">
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 
-const SUPA_URL = 'https://natotrarjgglxionrabw.supabase.co';
-const SUPA_KEY = 'sb_publishable_seuWLwJGKLFOIcs-i2HiEQ_RPjnrT2D';
+// Project credentials live in config.js (gitignored) so they are not
+// committed. Copy config.example.js to config.js to set this up.
+const CFG = window.H2R_CONFIG;
+if (!CFG?.supabaseUrl || !CFG?.supabaseKey) {
+  document.body.innerHTML =
+    '<div style="font:16px/1.6 system-ui;padding:40px;max-width:620px;margin:0 auto">' +
+    '<h2>Configuration missing</h2><p>The command centre needs its Supabase details. ' +
+    'Copy <code>config.example.js</code> to <code>config.js</code> in this folder and ' +
+    'fill in your project URL and publishable key.</p></div>';
+  throw new Error('H2R_CONFIG missing — see config.example.js');
+}
+const SUPA_URL = CFG.supabaseUrl;
+const SUPA_KEY = CFG.supabaseKey;
 const supabase = createClient(SUPA_URL, SUPA_KEY, { auth:{ persistSession:true, autoRefreshToken:true }});
 
 const GHANA_REGIONS = ['Ahafo','Ashanti','Bono','Bono East','Central','Eastern','Greater Accra',

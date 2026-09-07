@@ -50,3 +50,6 @@ app.*.map.json
 
 # Kotlin compiler session files
 android/.kotlin/
+
+# Command centre runtime credentials (copy config.example.js)
+command-center/config.js
